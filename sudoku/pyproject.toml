@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doublebackprop"
+version = "0.1.0"
+description = "Double Backprop"
+requires-python = ">=3.11"
+dependencies = [
+    "xlm-core",
+    "torch",
+    "jaxtyping",
+]
+
+[project.scripts]
+dump-decode-trajectories = "doublebackprop.dump_decode_trajectories:main"
+pair-trajectory-dumps = "doublebackprop.pair_trajectory_dumps:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["doublebackprop*"]
+
+[tool.setuptools.package-data]
+doublebackprop = ["configs/**/*.yaml"]
+

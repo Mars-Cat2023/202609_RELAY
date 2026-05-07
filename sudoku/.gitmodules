@@ -1,0 +1,7 @@
+[submodule "xlm-core"]
+	path = xlm-core
+	url = https://github.com/dhruvdcoder/xlm-core.git
+	branch = main
+[submodule "slurm_scripts"]
+	path = slurm_scripts
+	url = https://github.com/dhruvdcoder/slurm_scripts.git

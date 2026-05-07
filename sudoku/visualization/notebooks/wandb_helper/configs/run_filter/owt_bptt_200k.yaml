@@ -1,0 +1,9 @@
+_target_: builtins.dict
+$and:
+  - state:
+      $in: 
+        - finished
+  - tags: "job_type=eval"
+  - tags: "dataset=owt_packed"
+  - tags: "model_type=loopholing_bptt_puma"
+  - tags: "checkpoint=0-200000"

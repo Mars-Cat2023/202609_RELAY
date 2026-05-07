@@ -1,0 +1,7 @@
+# Install on top of the main project env (see repo README).
+# pip install -r visualization/requirements.txt
+
+matplotlib>=3.5
+ipywidgets>=8.0
+jupyter>=1.0
+ipykernel>=6.0

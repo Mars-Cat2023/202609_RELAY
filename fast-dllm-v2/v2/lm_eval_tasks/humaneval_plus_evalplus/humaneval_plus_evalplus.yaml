@@ -1,0 +1,37 @@
+task: humaneval_plus_evalplus
+class: !function task.HumanEvalPlusEvalPlus
+
+output_type: generate_until
+unsafe_code: true
+test_split: test
+
+dataset_path: noop
+dataset_name: null
+
+custom_dataset: !function task.load_humaneval_plus_dataset
+
+doc_to_target: ""
+num_fewshot: 0
+repeats: 1
+
+generation_kwargs:
+  max_gen_toks: 512
+  do_sample: false
+  until: []
+
+filter_list:
+  - name: evalplus_sanitize
+    filter:
+      - function: custom
+        filter_fn: !function postprocess.build_predictions
+
+metric_list:
+  - metric: pass_at_1_base
+    aggregation: mean
+    higher_is_better: true
+  - metric: pass_at_1_plus
+    aggregation: mean
+    higher_is_better: true
+
+metadata:
+  version: 1.0

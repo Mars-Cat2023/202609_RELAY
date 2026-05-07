@@ -1,0 +1,2 @@
+_target_: doublebackprop.datamodule.PuzzleMLMCollator
+tokenizer: ${global_components:tokenizer}

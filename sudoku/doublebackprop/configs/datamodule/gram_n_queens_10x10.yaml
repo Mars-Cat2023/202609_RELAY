@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - default
+  - /datasets@datamodule.dataset_managers.train.lm: gram_n_queens_train_10x10
+  - /datasets@datamodule.dataset_managers.val.lm: gram_n_queens_val_10x10
+  - /datasets@datamodule.dataset_managers.val.infill_prediction: gram_n_queens_val_10x10
+  - /collator@datamodule.dataset_managers.train.lm.collator: puzzle_mlm
+  - /collator@datamodule.dataset_managers.val.lm.collator: puzzle_mlm
+  - /collator@datamodule.dataset_managers.val.infill_prediction.collator: puzzle_infill_pred
+
+datamodule:
+  print_batch_fn: doublebackprop.datamodule.print_batch
+
+tags:
+  dataset: gram_n_queens_10x10

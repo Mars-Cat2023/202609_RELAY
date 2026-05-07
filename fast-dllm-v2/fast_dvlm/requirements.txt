@@ -1,0 +1,6 @@
+transformers>=4.49.0
+torch>=2.0.0
+accelerate>=0.34.2
+qwen_vl_utils
+gradio
+Pillow
