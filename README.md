@@ -20,8 +20,8 @@ The two subdirectories are intentionally independent: each ships its own Python 
 
 | Sub-project | Paper section | Environment |
 |---|---|---|
-| [`sudoku/`](sudoku) | §4.1 (Table 1, Figure 2) | `.venv_relay_sudoku` (`python -m venv`, Python 3.11.10) |
-| [`fast-dllm-v2/`](fast-dllm-v2) | §4.2 (Table 2, Figure 3) | `lmflow` conda env (Python 3.10) |
+| [`sudoku/`](sudoku) | §4.1 (Table 1, Figure 2) | `.venv_relay` venv (`python -m venv`, Python 3.11.10) |
+| [`fast-dllm-v2/`](fast-dllm-v2) | §4.2 (Table 2, Figure 3) | `relay` conda env (Python 3.10) |
 
 > Both sub-projects log to Weights & Biases by default. Set `WANDB_ENTITY` to your own entity in each sub-project's `.env` (or pass `loggers.wandb=null` to the Sudoku launcher) to avoid logging anywhere; we omit the entity name here to preserve double-blind anonymity.
 
@@ -47,8 +47,8 @@ cd relay/sudoku
 
 # 1. Environment + .env setup (one-time)
 #    See sudoku/README.md for the full requirements list.
-python -m venv .venv_relay_sudoku
-source .venv_relay_sudoku/bin/activate
+python -m venv .venv_relay
+source .venv_relay/bin/activate
 pip install -e xlm-core
 pip install -e xlm-core/xlm-models
 pip install -e .
@@ -93,9 +93,9 @@ Each row is a 200-step adaptation of the off-the-shelf [`Efficient-Large-Model/F
 cd relay/fast-dllm-v2/v2
 
 # 1. Environment (one-time). Defaults assume CONDA_ROOT=${HOME}/miniconda3
-#    and a conda env named "lmflow"; both are overridable via env vars.
-conda create -n lmflow python=3.10 pip ipykernel -y
-conda activate lmflow
+#    and a conda env named "relay"; both are overridable via env vars.
+conda create -n relay python=3.10 pip ipykernel -y
+conda activate relay
 pip install -e .            # core training package
 pip install -e '.[eval]'    # adds the pinned EvalPlus version
 

@@ -34,7 +34,7 @@ fi
 cd "${REPO_ROOT}"
 mkdir -p logs evalplus_results/magicoder_full_sweep
 
-CONDA_ENV=${EVALPLUS_CONDA_ENV:-venv_fastdllm}
+CONDA_ENV=${EVALPLUS_CONDA_ENV:-relay}
 CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 if [ "${EVALPLUS_SKIP_CONDA:-0}" != "1" ] && [ -f "${CONDA_ROOT}/etc/profile.d/conda.sh" ]; then
     # shellcheck disable=SC1091

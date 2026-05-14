@@ -39,7 +39,7 @@ cd "${REPO_ROOT}"
 # CONDA_ENV / CONDA_ROOT default to the values used in the paper experiments
 # but can be overridden per-cluster via env vars (kept this way so that no
 # usernames or absolute paths are baked into the public release).
-CONDA_ENV=${CONDA_ENV:-lmflow}
+CONDA_ENV=${CONDA_ENV:-relay}
 CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 mkdir -p "${REPO_ROOT}/logs/${SLURM_JOB_NAME:-fastdllm_v2_1p5B_opencode_openmath_relay}"
 

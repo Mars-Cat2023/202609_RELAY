@@ -46,7 +46,7 @@ if [ ! -f "${REPO_ROOT}/scripts/generate_evalplus_jsonl.py" ]; then
 fi
 cd "${REPO_ROOT}"
 
-CONDA_ENV=${EVALPLUS_CONDA_ENV:-lmflow}
+CONDA_ENV=${EVALPLUS_CONDA_ENV:-relay}
 CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 mkdir -p "${REPO_ROOT}/logs/${SLURM_JOB_NAME:-evalplus_checkpoint}"
 

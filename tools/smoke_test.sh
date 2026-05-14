@@ -29,15 +29,15 @@ yellow(){ printf "\033[0;33m%s\033[0m\n" "$*"; }
 # ------------------------------------------------------------------ #
 if [ "${RELAY_SKIP_SUDOKU:-0}" = "1" ]; then
     yellow "[skip] sudoku smoke test (RELAY_SKIP_SUDOKU=1)"
-elif [ ! -d "sudoku/.venv_relay_sudoku" ]; then
-    yellow "[skip] sudoku smoke test (sudoku/.venv_relay_sudoku not found; "
+elif [ ! -d "sudoku/.venv_relay" ]; then
+    yellow "[skip] sudoku smoke test (sudoku/.venv_relay not found; "
     yellow "       see sudoku/README.md for one-time setup instructions)"
 else
     green "[run]  sudoku smoke test"
     (
         cd sudoku
         # shellcheck disable=SC1091
-        source .venv_relay_sudoku/bin/activate
+        source .venv_relay/bin/activate
         export PROJECT_ROOT="$PWD"
         python -m xlm.train \
             experiment=sudoku_extreme_relay_bptt \
@@ -61,7 +61,7 @@ elif ! command -v conda >/dev/null 2>&1; then
     yellow "       fast-dllm-v2/v2/README.md and re-run)"
 else
     CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
-    CONDA_ENV=${CONDA_ENV:-lmflow}
+    CONDA_ENV=${CONDA_ENV:-relay}
     if [ ! -d "${CONDA_ROOT}/envs/${CONDA_ENV}" ]; then
         yellow "[skip] fast-dllm-v2 smoke test (conda env '${CONDA_ENV}' not "
         yellow "       found at ${CONDA_ROOT}/envs/${CONDA_ENV}; see "

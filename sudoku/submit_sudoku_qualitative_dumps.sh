@@ -35,7 +35,7 @@
 #   SLURM_CPUS_PER_TASK=2
 #   SLURM_TIME=04:00:00
 #   SLURM_RESERVATION=""          # cluster reservation (anonymised)
-#   PYBIN=$REPO_ROOT/.venv_relay_sudoku/bin/python
+#   PYBIN=$REPO_ROOT/.venv_relay/bin/python
 
 set -euo pipefail
 
@@ -79,7 +79,7 @@ SLURM_TIME="${SLURM_TIME:-04:00:00}"
 SLURM_MEM="${SLURM_MEM:-64G}"
 SLURM_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK:-2}"
 SLURM_RESERVATION="${SLURM_RESERVATION:-}"
-PYBIN="${PYBIN:-${ROOT}/.venv_relay_sudoku/bin/python}"
+PYBIN="${PYBIN:-${ROOT}/.venv_relay/bin/python}"
 
 mkdir -p "$OUT_DIR" "$DUMP_DIR"
 MANIFEST="$OUT_DIR/manifest.csv"

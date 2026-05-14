@@ -30,8 +30,8 @@ git submodule update --remote xlm-core
 Create a virtual environment and install everything in editable mode:
 
 ```bash
-python -m venv .venv_relay_sudoku
-source .venv_relay_sudoku/bin/activate
+python -m venv .venv_relay
+source .venv_relay/bin/activate
 pip install -e xlm-core
 pip install -e xlm-core/xlm-models
 pip install -e .

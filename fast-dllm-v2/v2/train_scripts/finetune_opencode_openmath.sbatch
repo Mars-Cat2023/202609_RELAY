@@ -36,7 +36,7 @@ if [ ! -f "${REPO_ROOT}/train_scripts/finetune.py" ] || [ ! -d "${REPO_ROOT}/src
 fi
 cd "${REPO_ROOT}"
 
-CONDA_ENV=${CONDA_ENV:-lmflow}
+CONDA_ENV=${CONDA_ENV:-relay}
 CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 mkdir -p "${REPO_ROOT}/logs/${SLURM_JOB_NAME:-fastdllm_v2_1p5B_opencode_openmath_vanilla}"
 

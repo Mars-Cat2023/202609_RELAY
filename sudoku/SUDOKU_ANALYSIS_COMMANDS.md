@@ -26,7 +26,7 @@ time (zero `legal_rate` for the entire run): `mlm_uniform_tied_seed3` and
 ```bash
 cd $REPO_ROOT
 export PROJECT_ROOT=$REPO_ROOT
-source .venv_relay_sudoku/bin/activate
+source .venv_relay/bin/activate
 
 # 1. Dump trajectories for 22 alive checkpoints × 7 thresholds × 2000 puzzles.
 #    (Skips the 2 diverged seeded runs; defaults to seeds 1, 2, 3.)

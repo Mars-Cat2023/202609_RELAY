@@ -62,7 +62,7 @@ loop is wired up before launching the full 300k:
 
 ```bash
 cd relay/sudoku
-source .venv_relay_sudoku/bin/activate
+source .venv_relay/bin/activate
 export PROJECT_ROOT="$PWD"
 
 python -m xlm.train \

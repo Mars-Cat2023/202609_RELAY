@@ -32,7 +32,7 @@ else
 fi
 cd "${REPO_ROOT}"
 
-CONDA_ENV=${CONDA_ENV:-venv_fastdllm}
+CONDA_ENV=${CONDA_ENV:-relay}
 CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 # shellcheck disable=SC1091
 source "${CONDA_ROOT}/etc/profile.d/conda.sh"
