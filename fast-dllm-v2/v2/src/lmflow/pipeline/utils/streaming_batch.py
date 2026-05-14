@@ -1,37 +1,37 @@
-"""Persistent across-call PUMA-style buffer for the BPTT path.
+"""Persistent across-call rollout buffer for the RELAY training loop.
 
-A simplified port of ``doublebackprop/streaming_batch.py`` (PUMA, Hou et al.
-2025) tailored to Fast-dLLM v2's MDM finetuning. Differences from the upstream
+A Fast-dLLM v2 port of ``relay/streaming_batch.py`` (the rollout buffer used
+by the Sudoku side of the codebase, paper Algorithm 1 line 3 -- "if no slot
+is unfinished, draw a fresh ``x0``"). Differences from the upstream Sudoku
 implementation:
 
-  * No ``segment_ids`` / ``block_mask`` (Fast-dLLM v2 builds its own
-    ``gen_mask`` from ``labels.shape`` inside the model).
-  * No ``fixed`` mask — we use ``labels != -100`` as the maskable mask
+  * No ``segment_ids`` (Fast-dLLM v2 builds its own ``gen_mask`` from
+    ``labels.shape`` inside the model).
+  * No ``fixed`` mask -- we use ``labels != -100`` as the maskable mask
     everywhere. Prompt positions (``labels == -100``) act as "fixed".
-  * Storage schema mirrors what the BPTT loss needs to advance a buffered
+  * Storage schema mirrors what the RELAY loss needs to advance a buffered
     slice across calls:
-        x_clean        — (capacity, L)        original GT, immutable per slice
-        x_input        — (capacity, L)        current partial-mask state
-        labels         — (capacity, L)        -100 outside response, GT inside
-        attention_mask — (capacity, L) opt    pad mask if provided
-        h_s            — (capacity, L, D)     persistent loophole carry, fp32
-        ready_to_evict — (capacity,)          True when no maskable masks left
+        x_clean        - (capacity, L)        original GT, immutable per slice
+        x_input        - (capacity, L)        current partial-mask state
+        labels         - (capacity, L)        -100 outside response, GT inside
+        attention_mask - (capacity, L) opt    pad mask if provided
+        h_s            - (capacity, L, D)     persistent relay state, fp32
+        ready_to_evict - (capacity,)          True when no maskable masks left
 
 Per-call lifecycle (driven by ``FastDLLMBlockBPTTLoss.forward``):
 
-  1. ``evict_and_fill(batch)`` — at cold start initializes storage from the
-     incoming batch (capacity = batch_size, PUMA's convention) and seeds
-     ``x_input`` by replacing all maskable positions with ``mask_token_id``;
-     on subsequent calls, evicts ready slots and fills them with rows from
-     the new batch (newly-filled slots get fresh all-mask ``x_input`` and
-     zeroed ``h_s``).
-  2. The loss runs the 2-step BPTT on the buffered ``(x_input, h_s)``.
-  3. ``persist_after_step(x_input_next, h_s_next)`` — writes the
+  1. ``evict_and_fill(batch)`` -- at cold start initializes storage from the
+     incoming batch (capacity = batch_size) and seeds ``x_input`` by
+     replacing all maskable positions with ``mask_token_id``; on subsequent
+     calls, evicts ready slots and fills them with rows from the new batch
+     (newly-filled slots get fresh all-mask ``x_input`` and zeroed ``h_s``).
+  2. The loss runs the 2-step RELAY rollout on the buffered ``(x_input, h_s)``.
+  3. ``persist_after_step(x_input_next, h_s_next)`` -- writes the
      post-step state back to storage and recomputes ``ready_to_evict``.
 
 Buffer state is per-rank, never crosses process boundaries, never enters the
 autograd graph (we always ``detach().clone()`` on writes), and is *not*
-saved with the model state dict (cold-starts on resume — fine for finetune).
+saved with the model state dict (cold-starts on resume -- fine for finetune).
 """
 
 from typing import Any, Dict, Optional
@@ -88,7 +88,7 @@ class StreamingBatch:
         batch_size, seq_len = x_clean.shape
 
         if not self.is_initialized():
-            # Cold start: capacity = incoming batch size (PUMA convention).
+            # Cold start: capacity = incoming batch size.
             self.capacity = batch_size
             self.seq_len = seq_len
             self._device = x_clean.device
@@ -130,10 +130,10 @@ class StreamingBatch:
         h_s_next: Optional[torch.Tensor],
         mask_token_id: int,
     ) -> None:
-        """Write the post-BPTT state back. Detaches both tensors.
+        """Write the post-RELAY state back. Detaches both tensors.
 
-        When carry is disabled (``carry_mode == "none"``) the model's forward
-        skips the CAB / loopholing branch and returns ``h_s = None``; in that
+        When the relay is disabled (``use_relay=False``) the model's forward
+        skips the relay LayerNorm branch and returns ``h_s = None``; in that
         case we leave the buffer's ``h_s`` slot at its zero-init value (which
         is what ``_prepare_h_t`` will see and short-circuit again next step).
         """
@@ -197,7 +197,7 @@ class StreamingBatch:
             x_clean_in,
         )
         self.storage["x_input"][slots] = x_input_in
-        # Fresh slice: zero loophole carry.
+        # Fresh slice: zero relay state.
         self.storage["h_s"][slots] = 0
         if "attention_mask" in self.storage and "attention_mask" in batch:
             self.storage["attention_mask"][slots] = batch["attention_mask"][src].to(
@@ -218,7 +218,7 @@ class StreamingBatch:
         still_masked = (x_input == mask_token_id) & maskable
         return still_masked.sum(dim=-1)
 
-    # Helper: keep the API close to the upstream PUMA module for grep-ability.
+    # Helper: keep the API close to ``relay/streaming_batch.py`` for grep-ability.
     storage_get: Any = None  # noqa: E501
 
     def __repr__(self) -> str:  # pragma: no cover

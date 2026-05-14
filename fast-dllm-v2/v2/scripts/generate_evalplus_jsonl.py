@@ -129,8 +129,8 @@ def _apply_checkpoint_config_json(config: object, checkpoint_dir: Path) -> None:
     """
     For Trainer ``checkpoint-*`` dirs that only have ``config.json`` (no
     ``configuration.py``), we still must build the same architecture as
-    training (CAB / loopholing / MLP-carry) before ``load_state_dict``;
-    otherwise carry weights become ``unexpected_keys`` and use_carry is wrong.
+    training (RELAY relay LayerNorm) before ``load_state_dict``; otherwise
+    relay weights become ``unexpected_keys`` and ``use_carry`` is wrong.
     """
     p = checkpoint_dir / "config.json"
     if not p.is_file():
@@ -149,9 +149,8 @@ def _apply_checkpoint_config_json(config: object, checkpoint_dir: Path) -> None:
     if n_set:
         print(
             f"[generate_evalplus_jsonl] applied {n_set} config fields from {p} "
-            f"(use_cab={getattr(config, 'use_cab', None)}, "
-            f"use_loopholing={getattr(config, 'use_loopholing', None)}, "
-            f"use_mlp_carry={getattr(config, 'use_mlp_carry', None)})"
+            f"(use_relay={getattr(config, 'use_relay', None)}, "
+            f"relay_layer={getattr(config, 'relay_layer', None)})"
         )
 
 
@@ -215,12 +214,11 @@ def _build_from_in_tree_source(checkpoint_dir: Path) -> torch.nn.Module:
     """
     Build a Fast-dLLM v2 model **directly from the in-tree source**
     (``src/lmflow/models/fast_dllm/{configuration,modeling}.py``) using the
-    checkpoint's own ``config.json`` so BPTT carry flags
-    (``use_cab`` / ``use_loopholing`` / ``use_mlp_carry``, ``read_layers``,
-    ``cab_*`` etc.) are honored at construction time. This avoids
-    ``trust_remote_code`` round-trips through (potentially stale) Hugging Face
-    Hub caches whose ``modeling.py`` may predate the carry implementations,
-    which would otherwise leave ``h_t_layer_norm`` / ``mlp_carry`` / ``cab.*``
+    checkpoint's own ``config.json`` so the RELAY config fields
+    (``use_relay``, ``relay_layer``) are honored at construction time. This
+    avoids ``trust_remote_code`` round-trips through (potentially stale)
+    Hugging Face Hub caches whose ``modeling.py`` may predate the relay
+    implementation, which would otherwise leave ``relay_layer_norm.*``
     weights as ``unexpected_keys`` at load time.
 
     Use the same Python the trainer used.
@@ -252,8 +250,7 @@ def _build_from_in_tree_source(checkpoint_dir: Path) -> torch.nn.Module:
     cfg = Fast_dLLM_QwenConfig(**init_kwargs)
     print(
         f"[generate_evalplus_jsonl] built Fast_dLLM_QwenConfig from {cfg_path} "
-        f"(use_cab={cfg.use_cab}, use_loopholing={cfg.use_loopholing}, "
-        f"use_mlp_carry={cfg.use_mlp_carry})"
+        f"(use_relay={cfg.use_relay}, relay_layer={cfg.relay_layer})"
     )
     model = Fast_dLLM_QwenForCausalLM(cfg)
     return model.to(dtype=torch.bfloat16)
@@ -294,9 +291,8 @@ def load_model(
 
     Default path: build the architecture directly from ``src/lmflow/models/fast_dllm``
     using the checkpoint's own ``config.json``, then load the checkpoint weights
-    via ``load_state_dict``. This guarantees the in-tree carry modules
-    (``h_t_layer_norm`` / ``mlp_carry`` / ``cab``) are present **before** the
-    state dict is loaded.
+    via ``load_state_dict``. This guarantees the in-tree relay module
+    (``relay_layer_norm``) is present **before** the state dict is loaded.
 
     Override path: pass ``code_model_path`` to a Hub id or local tree with
     ``configuration.py`` + ``modeling.py`` + ``config.json`` to use that source
@@ -483,14 +479,15 @@ def main() -> None:
     ap.add_argument(
         "--use_carry",
         action="store_true",
-        help="If the checkpoint uses CAB/loopholing, enable 2-step carry (matches eval.py).",
+        help="Enable 2-step relay-state carry inference (matches eval.py).",
     )
     ap.add_argument(
         "--use_block_cache",
         action="store_true",
         help=(
-            "Enable Fast-dLLM v2 intra-block KV cache. This is only validated for "
-            "vanilla/nocarry checkpoints; carry checkpoints should leave it off."
+            "Enable Fast-dLLM v2 intra-block KV cache. Validated for vanilla "
+            "SFT checkpoints only; relay (use_carry=True) runs should leave "
+            "it off."
         ),
     )
     args = ap.parse_args()
@@ -511,15 +508,11 @@ def main() -> None:
     )
     use_carry = args.use_carry
     if use_carry:
-        has_carry = (
-            getattr(model.config, "use_cab", False)
-            or getattr(model.config, "use_loopholing", False)
-            or getattr(model.config, "use_mlp_carry", False)
-        )
+        has_carry = bool(getattr(model.config, "use_relay", False))
         if not has_carry:
             print(
-                "[warn] --use_carry set but config has no use_cab/use_loopholing/use_mlp_carry; "
-                "running without carry effect."
+                "[warn] --use_carry set but config has use_relay=False; "
+                "running without relay effect."
             )
             use_carry = False
     use_block_cache = args.use_block_cache

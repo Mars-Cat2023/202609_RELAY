@@ -19,12 +19,11 @@ extra_require = {
     "multimodal": ["Pillow"],
     "vllm": ["vllm>=0.4.3"],
     "ray": ["ray>=2.22.0"],
-    "gradio": ["gradio"],
-    "flask": ["flask", "flask_cors"],
     "flash_attn": ["flash-attn>=2.0.2"],
-    "trl": ["trl==0.8.0"],
-    # lm-evaluation-harness (same pin as train_scripts/eval_*.sbatch)
-    "eval": ["lm-eval[math,ifeval]==0.4.9"],
+    # EvalPlus pinned to the exact version that produced the HumanEval+ /
+    # MBPP+ numbers in Table 2 of the RELAY paper. Kept as a separate extra
+    # so users who only train (not eval) need not pull it in.
+    "eval": ["evalplus==0.3.1"],
 }
 
 readme_path = os.path.join(folder, "README.md")

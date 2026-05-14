@@ -151,23 +151,18 @@ class Fast_dLLM_v2EvalHarness(LM):
         self._nfe_values = []
         self._nfe_generated_token_counts = []
         self._nfe_task_names = set()
-        self._has_carry = (
-            getattr(self.model.config, "use_cab", False)
-            or getattr(self.model.config, "use_loopholing", False)
-            or getattr(self.model.config, "use_mlp_carry", False)
-        )
+        self._has_carry = bool(getattr(self.model.config, "use_relay", False))
         if self.use_carry:
             if self._has_carry:
                 print(
-                    f"[eval] use_carry=True — will run 2-step forward with hidden-state carry "
-                    f"(cab={getattr(self.model.config, 'use_cab', False)}, "
-                    f"loopholing={getattr(self.model.config, 'use_loopholing', False)}, "
-                    f"mlp_carry={getattr(self.model.config, 'use_mlp_carry', False)})"
+                    "[eval] use_carry=True -- will run 2-step forward with the "
+                    f"RELAY relay state (use_relay=True, "
+                    f"relay_layer={getattr(self.model.config, 'relay_layer', -1)})"
                 )
             else:
                 print(
-                    "[eval] use_carry=True requested but model config has no "
-                    "CAB/loopholing/mlp_carry; falling back to single-pass."
+                    "[eval] use_carry=True requested but model config has "
+                    "use_relay=False; falling back to single-pass."
                 )
 
         fast_dllm_eval_debug.configure(

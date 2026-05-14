@@ -1,17 +1,23 @@
-"""Prepare a small OpenCodeInstruct/OpenMathInstruct-2 mixture for Fast-dLLM v2.
+"""Prepare an OpenCodeInstruct / OpenMathInstruct-2 mixture for Fast-dLLM v2.
 
 The output matches the repo's conversation JSON layout:
 
-    data/opencode_openmath_60k/train_conversation/train_*.json
+    <out_dir>/train_conversation/train_*.json
 
-Default recipe:
-    * 33k code rows from nvidia/OpenCodeInstruct
-    * 27k math rows from nvidia/OpenMathInstruct-2
-    * streaming shuffle, prompt deduplication, and tokenized chat length <= 2048
+Paper recipe (Table 2 of *Learned Relay Representations*):
 
-Run from ``Fast-dLLM/v2``:
+    python scripts/prep_opencode_openmath_mix.py \
+      --out_dir data/opencode_openmath_60k_c40m60 \
+      --code_rows 24000 --math_rows 36000 --require_code_def
 
-    python scripts/prep_opencode_openmath_mix.py
+That is the **c40m60** mixture: 24 000 code rows + 36 000 math rows = 60 000
+total, 40% code / 60% math. The ``--require_code_def`` flag drops code rows
+without a Python ``def`` -- empirically the cleanest filter that still
+yields the reported HumanEval / MBPP gains.
+
+Defaults below intentionally do NOT match the paper -- they preserve the
+upstream Fast-dLLM v2 example so existing scripts keep working. Pass the
+flags above to reproduce Table 2.
 """
 
 from __future__ import annotations
@@ -336,6 +342,30 @@ def main() -> None:
     rng = random.Random(args.seed)
     instances = code + math
     rng.shuffle(instances)
+
+    # Reproducibility check: warn loudly if the resulting mixture is not the
+    # 60k c40m60 split used to compute Table 2 of the paper. The targets are
+    # only enforced when the user passes the c40m60 defaults
+    # (--code_rows 24000 --math_rows 36000); other ratios are allowed but
+    # will not match the reported numbers.
+    if args.code_rows == 24000 and args.math_rows == 36000:
+        if len(code) < args.code_rows:
+            print(
+                f"[warn] paper c40m60 mixture asked for {args.code_rows} code rows "
+                f"but only {len(code)} survived filtering -- Table 2 numbers may "
+                "not reproduce. Re-run with a larger --code_shuffle_buffer or "
+                "loosen --require_unit_tests / --min_code_test_score / "
+                "--require_code_def to recover.",
+                file=sys.stderr,
+            )
+        if len(math) < args.math_rows:
+            print(
+                f"[warn] paper c40m60 mixture asked for {args.math_rows} math rows "
+                f"but only {len(math)} survived filtering -- Table 2 numbers may "
+                "not reproduce. Re-run with a larger --math_shuffle_buffer or "
+                "loosen --max_math_problem_chars / --max_math_solution_chars.",
+                file=sys.stderr,
+            )
 
     out_dir = Path(args.out_dir)
     _write_shards(out_dir, instances, args.shard_size)

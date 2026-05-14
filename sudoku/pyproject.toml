@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "doublebackprop"
+name = "relay-sudoku"
 version = "0.1.0"
-description = "Double Backprop"
+description = "Learned Relay Representations for diffusion MLM (Sudoku experiments)"
 requires-python = ">=3.11"
 dependencies = [
     "xlm-core",
@@ -14,13 +14,12 @@ dependencies = [
 ]
 
 [project.scripts]
-dump-decode-trajectories = "doublebackprop.dump_decode_trajectories:main"
-pair-trajectory-dumps = "doublebackprop.pair_trajectory_dumps:main"
+dump-decode-trajectories = "relay.dump_decode_trajectories:main"
+pair-trajectory-dumps = "relay.pair_trajectory_dumps:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["doublebackprop*"]
+include = ["relay*"]
 
 [tool.setuptools.package-data]
-doublebackprop = ["configs/**/*.yaml"]
-
+relay = ["configs/**/*.yaml"]

@@ -8,14 +8,14 @@ ships solver trajectories and strategy labels), compute algorithmic primitives
 parquet table, and produce the headline figures from a Jupyter notebook.
 
 The pipeline is **checkpoint-only**; nothing here retrains a model. Inference
-is performed by the existing `doublebackprop.dump_decode_trajectories` CLI,
+is performed by the existing `relay.dump_decode_trajectories` CLI,
 which only enables `predictor.capture_trajectory=True` after the checkpoint is
 loaded — so the training-time training behaviour is unaffected.
 
 The seeded training sweep produced 24 checkpoints (4 objectives × 2 tying ×
 3 seeds) under `logs/<job>_seed{1,2,3}/`. Two of those diverged at training
 time (zero `legal_rate` for the entire run): `mlm_uniform_tied_seed3` and
-`loopholing_no_bptt_tied_seed1` — both flagged by W&B's
+`relay_sg_tied_seed1` — both flagged by W&B's
 `val/prediction/legal_rate` metric and skipped by default in the dump driver.
 
 ---
@@ -25,7 +25,7 @@ time (zero `legal_rate` for the entire run): `mlm_uniform_tied_seed3` and
 ```bash
 cd $REPO_ROOT
 export PROJECT_ROOT=$REPO_ROOT
-source venv-double-backprop/bin/activate
+source .venv_relay_sudoku/bin/activate
 
 # 1. Dump trajectories for 22 alive checkpoints × 7 thresholds × 2000 puzzles.
 #    (Skips the 2 diverged seeded runs; defaults to seeds 1, 2, 3.)
@@ -33,11 +33,11 @@ DO=submit \
   SEEDS="1 2 3" \
   THRESHOLDS="0.01 0.05 0.10 0.15 0.25 0.35 0.45" \
   MAX_EXAMPLES=2000 LIMIT_VAL_BATCHES=2000 \
-  SLURM_MEM=64G SLURM_TIME=04:00:00 SLURM_RESERVATION=dhruvesh \
+  SLURM_MEM=64G SLURM_TIME=04:00:00 SLURM_RESERVATION= \
   bash submit_sudoku_qualitative_dumps.sh
 
 # 2. Once all 22*7=154 sbatch jobs finish, join JSONLs + HF metadata into one parquet.
-python -m doublebackprop.n_way_pair_trajectories \
+python -m relay.n_way_pair_trajectories \
   --manifest outputs/sudoku_analysis/manifest.csv \
   --hf-split test \
   --out outputs/sudoku_analysis/sudoku_analysis.parquet \
@@ -64,12 +64,12 @@ directory per seed: `logs/<base>_seed{1,2,3}/`.
 |-----------------------------|------------------------------|-------------|-------------------------------------------------------------|--------------------------|
 | `mlm_uniform_untied`        | `mlm_uniform`                | untied      | `logs/sudoku_extreme_mlm_uniform_300k_untied`              | 1, 2, 3                  |
 | `mlm_uniform_tied`          | `mlm_uniform`                | tied        | `logs/sudoku_extreme_mlm_uniform_300k_tied`                | 1, 2, **3 diverged**     |
-| `puma_only_untied`          | `puma_no_loopholing`         | untied      | `logs/sudoku_extreme_puma_only_300k_untied`                | 1, 2, 3                  |
-| `puma_only_tied`            | `puma_no_loopholing`         | tied        | `logs/sudoku_extreme_puma_only_300k_tied`                  | 1, 2, 3                  |
-| `loopholing_no_bptt_untied` | `puma_loopholing_stop_grad`  | untied      | `logs/sudoku_extreme_loopholing_puma_no_bptt_300k_untied`  | 1, 2, 3                  |
-| `loopholing_no_bptt_tied`   | `puma_loopholing_stop_grad`  | tied        | `logs/sudoku_extreme_loopholing_puma_no_bptt_300k_tied`    | **1 diverged**, 2, 3     |
-| `loopholing_bptt_untied`    | `puma_loopholing_bptt`       | untied      | `logs/sudoku_extreme_loopholing_puma_bptt_steps2_300k_untied` | 1, 2, 3              |
-| `loopholing_bptt_tied`      | `puma_loopholing_bptt`       | tied        | `logs/sudoku_extreme_loopholing_puma_bptt_steps2_300k_tied`   | 1, 2, 3              |
+| `rollout_untied`          | `rollout`         | untied      | `logs/sudoku_extreme_rollout_300k_untied`                | 1, 2, 3                  |
+| `rollout_tied`            | `rollout`         | tied        | `logs/sudoku_extreme_rollout_300k_tied`                  | 1, 2, 3                  |
+| `relay_sg_untied` | `relay_sg`  | untied      | `logs/sudoku_extreme_relay_sg_300k_untied`  | 1, 2, 3                  |
+| `relay_sg_tied`   | `relay_sg`  | tied        | `logs/sudoku_extreme_relay_sg_300k_tied`    | **1 diverged**, 2, 3     |
+| `relay_untied`    | `relay`       | untied      | `logs/sudoku_extreme_relay_bptt_steps2_300k_untied` | 1, 2, 3              |
+| `relay_tied`      | `relay`       | tied        | `logs/sudoku_extreme_relay_bptt_steps2_300k_tied`   | 1, 2, 3              |
 
 → 22 alive seed-checkpoints; 2 diverged seeds skipped by default
 (`SKIP_DIVERGED=1` in the dump driver). The `mlp` and `cab` sub-sweeps in W&B
@@ -81,12 +81,12 @@ non-diverged seeds, from `wandb.ai/ilm-extensions/BPTT-sudoku`):**
 | objective                   | tied            | untied          |
 |-----------------------------|-----------------|-----------------|
 | `mlm_uniform`               | 0.290 ± 0.022   | 0.226 ± 0.030   |
-| `puma_no_loopholing`        | 0.422 ± 0.011   | 0.416 ± 0.009   |
-| `puma_loopholing_stop_grad` | 0.619 ± 0.011   | 0.613 ± 0.012   |
-| `puma_loopholing_bptt`      | 0.648 ± 0.014   | 0.649 ± 0.008   |
+| `rollout`        | 0.422 ± 0.011   | 0.416 ± 0.009   |
+| `relay_sg` | 0.619 ± 0.011   | 0.613 ± 0.012   |
+| `relay`      | 0.648 ± 0.014   | 0.649 ± 0.008   |
 
 The objective ordering is preserved across seeds, the ablation is now clean
-(MLM-uniform << No-Relay PUMA << Relay (StopGrad) << LEAR (BPTT)), and the
+(MLM-uniform << Rollout-only << Relay-sg << Relay), and the
 seed std is small relative to the inter-objective gap. Divergence is not
 seed-stable: tied StopGrad failed at seed=1 but trains fine at seeds 2/3, and
 tied MLM failed at seed=3 but trains fine at seeds 1/2 — so the original
@@ -99,7 +99,7 @@ correct source for any quantitative claim.
 ## Step 1 — Dump trajectories
 
 `submit_sudoku_qualitative_dumps.sh` is a thin driver around
-`python -m doublebackprop.dump_decode_trajectories` that loops over
+`python -m relay.dump_decode_trajectories` that loops over
 **(seed × run × tau)** tuples and writes one JSONL per `(run, seed, tau)` plus
 a manifest CSV consumed by the next step. It supports three modes:
 
@@ -113,13 +113,13 @@ Key environment variables (defaults in `[]`):
   from `logs/<base_job>_seed${seed}/`. Set `SEEDS=""` to fall back to the
   original 8 untagged log dirs (effectively seed=1).
 - `SKIP_DIVERGED` `[1]` — skips `(mlm_uniform_tied, seed=3)` and
-  `(loopholing_no_bptt_tied, seed=1)`, the two seeded combos that diverged at
+  `(relay_sg_tied, seed=1)`, the two seeded combos that diverged at
   training time (zero `val/prediction/legal_rate`). Set to `0` to dump them
   anyway (e.g., to verify the divergence shows up in the trajectory dump too).
 - `THRESHOLDS` `["0.01 0.05 0.10 0.15 0.25 0.35 0.45"]` — predictor confidence
   thresholds. The default span widens what the original sweep had on both ends:
-  τ=0.01–0.05 pushes loopholing models up to NFE ≈ 25–35; τ=0.35–0.45 pushes
-  MLM/No-Relay PUMA down to NFE ≈ 18–25. Together they bracket a matched-NFE
+  τ=0.01–0.05 pushes relay models up to NFE ≈ 25–35; τ=0.35–0.45 pushes
+  MLM/Rollout-only down to NFE ≈ 18–25. Together they bracket a matched-NFE
   band of ≈ [18, 35] across all four objectives, which the notebook's
   `per_model_nfe_range` diagnostic verifies before running interpolation.
 - `LIMIT_VAL_BATCHES` `[2000]` — caps val-loader batches (with
@@ -149,7 +149,7 @@ The script writes:
 
 - `outputs/sudoku_analysis/dumps/<run_id>__tau_0pXX.jsonl` — one record per
   puzzle. `<run_id>` is `<key>_seed<N>` when `SEEDS` is non-empty (e.g.
-  `loopholing_bptt_untied_seed2`) and bare `<key>` otherwise. Each record
+  `relay_untied_seed2`) and bare `<key>` otherwise. Each record
   contains `trajectory` (per-step token ids), `target_ids`, `pred_ids`,
   `pred_text`, `truth_text`, `rollout_steps_per_sample`, `exact_match`.
 - `outputs/sudoku_analysis/manifest.csv` — header
@@ -159,10 +159,10 @@ The script writes:
 Notes on per-objective Hydra overrides:
 
 - `mlm_uniform`: uses `experiment=sudoku_extreme_mlm_uniform`.
-- `puma_no_loopholing`, `puma_loopholing_stop_grad`, `puma_loopholing_bptt`:
-  use `experiment=sudoku_extreme_loopholing_bptt_puma` plus `loss.*`,
-  `predictor.with_loopholing=...`, and (for `puma_no_loopholing`)
-  `model=rotary_transformer_xtiny` to instantiate the non-loopholing transformer.
+- `rollout`, `relay_sg`, `relay`:
+  use `experiment=sudoku_extreme_relay_bptt` plus `loss.*`,
+  `predictor.with_relay=...`, and (for `rollout`)
+  `model=rotary_transformer_xtiny` to instantiate the non-relay transformer.
 - Tied variants additionally pass `++model.tie_embeddings=true` so that
   `load_model_for_inference` reconstructs the architecture matching the
   checkpoint state dict.
@@ -171,7 +171,7 @@ Notes on per-objective Hydra overrides:
 
 ## Step 2 — Join into a parquet
 
-`python -m doublebackprop.n_way_pair_trajectories` consumes the manifest and
+`python -m relay.n_way_pair_trajectories` consumes the manifest and
 emits one parquet with one row per `(run_id, tau, puzzle_hash)`. The HF
 metadata join is keyed by `puzzle_hash` (SHA1 of the normalized 81-char
 puzzle string). The puzzle question is recovered from `trajectory[0]`:
@@ -194,7 +194,7 @@ Important flags:
   nodes without unrestricted network access).
 
 Output columns (excerpt — see
-[`doublebackprop/n_way_pair_trajectories.py`](doublebackprop/n_way_pair_trajectories.py)
+[`relay/n_way_pair_trajectories.py`](relay/n_way_pair_trajectories.py)
 for the full schema):
 
 | group | columns |
@@ -206,7 +206,7 @@ for the full schema):
 | solver alignment | `fill_order_spearman, prefix_jaccard_at_5, prefix_jaccard_at_10, prefix_jaccard_at_20, prefix_jaccard_at_50pct` |
 
 The categorical strategy tier is computed from `strategies_used` via
-[`doublebackprop.sudoku_analysis.hardest_strategy_tier`](doublebackprop/sudoku_analysis.py)
+[`relay.sudoku_analysis.hardest_strategy_tier`](relay/sudoku_analysis.py)
 following the [timvink/sudoku-solver](https://github.com/timvink/sudoku-solver)
 README's grouping (Easy → Medium → Advanced → Master → BruteForce).
 
@@ -222,11 +222,11 @@ loads the parquet and produces five figures into `outputs/sudoku_analysis/figure
    Pareto plot from the in-progress writeup directly from the same evaluation
    slice that drives the rest of the analyses.
 2. **F2 — Strategy-conditioned gain**. Bar chart of `Δ exact_match` for
-   `LEAR − {MLM, No-Relay, Relay}` bucketed by `hardest_strategy`. Tests "BPTT
+   `Relay − {MLM, Rollout-only, Relay-sg}` bucketed by `hardest_strategy`. Tests "BPTT
    helps most on harder strategies".
 3. **F3 — Solver alignment**. Per-tier Spearman ρ of fill order; prefix
    Jaccard with the solver at `k ∈ {5, 10, 20}`. Process-level evidence that
-   loopholing+BPTT decodes in a more solver-like order.
+   relay+BPTT decodes in a more solver-like order.
 4. **F4 — Algorithmic primitives**. Naked / hidden / advanced / illegal rates
    among the cells the model commits to at step 1, plus per-step purity
    curves. Computed deterministically from the *clues* — independent of the
@@ -246,16 +246,16 @@ per-objective exact match. This decouples "more steps" from "smarter steps".
 
 | Path | Role |
 |------|------|
-| [`doublebackprop/sudoku_analysis.py`](doublebackprop/sudoku_analysis.py) | Token-id → digit grid; candidate / naked / hidden / advanced / illegal classifiers; fill-step grid; Spearman ρ; prefix Jaccard; one-shot `summarize_trajectory`. |
-| [`doublebackprop/n_way_pair_trajectories.py`](doublebackprop/n_way_pair_trajectories.py) | N-way join keyed by `puzzle_hash` + HF metadata → parquet. |
+| [`relay/sudoku_analysis.py`](relay/sudoku_analysis.py) | Token-id → digit grid; candidate / naked / hidden / advanced / illegal classifiers; fill-step grid; Spearman ρ; prefix Jaccard; one-shot `summarize_trajectory`. |
+| [`relay/n_way_pair_trajectories.py`](relay/n_way_pair_trajectories.py) | N-way join keyed by `puzzle_hash` + HF metadata → parquet. |
 | [`submit_sudoku_qualitative_dumps.sh`](submit_sudoku_qualitative_dumps.sh) | Driver over 8 runs × thresholds; emits manifest. |
 | [`plotting_scripts/sudoku_qualitative_study.ipynb`](plotting_scripts/sudoku_qualitative_study.ipynb) | Interactive analysis; five figures + matched NFE table. |
 
 Existing files reused unchanged:
 
-- [`doublebackprop/dump_decode_trajectories.py`](doublebackprop/dump_decode_trajectories.py) — sets `capture_trajectory=True` after checkpoint load.
-- [`doublebackprop/viz_puzzle_state.py`](doublebackprop/viz_puzzle_state.py) — `sudoku_first_nonmask_step_grid`, digit overlay.
-- [`doublebackprop/predictor.py`](doublebackprop/predictor.py) — `ConfidenceBasedPredictor`, no edits.
+- [`relay/dump_decode_trajectories.py`](relay/dump_decode_trajectories.py) — sets `capture_trajectory=True` after checkpoint load.
+- [`relay/viz_puzzle_state.py`](relay/viz_puzzle_state.py) — `sudoku_first_nonmask_step_grid`, digit overlay.
+- [`relay/predictor.py`](relay/predictor.py) — `ConfidenceBasedPredictor`, no edits.
 
 ---
 
@@ -276,7 +276,7 @@ Existing files reused unchanged:
 3. **Diverged checkpoints**. The seeded sweep has two failure modes that the
    `legal_rate` metric on W&B catches at the very first val epoch:
    - `mlm_uniform_tied_seed3` (W&B `enc7sjpy`) — `exact_match=0`, `legal_rate=0`.
-   - `loopholing_no_bptt_tied_seed1` (W&B `lx6ffcgd`) — same pattern,
+   - `relay_sg_tied_seed1` (W&B `lx6ffcgd`) — same pattern,
      reproducing the original `v6nzrrye` divergence at the same seed.
    Both are skipped by default via `SKIP_DIVERGED=1`. Note that the original
    `v6nzrrye` story flips on the seeded sweep: tied StopGrad trains fine at
@@ -310,7 +310,7 @@ Two consequences for the qualitative analysis:
 - **Brute-force dominates raw averages**. Diffusion models with our objective
   do not perform recursive backtracking, so brute-force puzzles bake in a
   ~80% floor of "impossible" examples. The notebook's `DROP_BRUTE_FORCE`
-  cohort toggle excludes them; expect the LEAR / Relay / No-Relay / MLM gap
+  cohort toggle excludes them; expect the Relay / Relay-sg / Rollout-only / MLM gap
   to remain in the same order but with a higher absolute level on every
   model.
 
@@ -324,8 +324,8 @@ and the dump time grows by 2.5×).
 
 ## Take-home claim, restated
 
-LEAR (Loopholing + BPTT) and Relay (Loopholing + StopGrad) do not merely
-dominate Uniform MLM and No-Relay PUMA on accuracy vs NFE; on the same
+Relay (BPTT) and Relay-sg (stop-grad) do not merely
+dominate Uniform MLM and Rollout-only on accuracy vs NFE; on the same
 puzzles and at matched NFE, they:
 
 1. commit to algorithmic primitives (naked / hidden singles) earlier (F4);
@@ -334,5 +334,5 @@ puzzles and at matched NFE, they:
 4. show the largest exact-match gains on the hardest strategy tiers (F2);
 5. push the Pareto frontier on accuracy vs NFE (F1).
 
-BPTT vs StopGrad is the cleaner ablation for the loopholing benefit, so the
+Relay vs Relay-sg is the cleaner ablation for the relay-with-BPTT benefit, so the
 notebook treats them as separate tracks throughout.

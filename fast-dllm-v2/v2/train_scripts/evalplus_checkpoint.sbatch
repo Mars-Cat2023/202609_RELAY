@@ -31,7 +31,7 @@
 #SBATCH --open-mode=append
 #SBATCH --output=logs/%x/%j.out
 #SBATCH --mail-type=FAIL,REQUEUE,TIME_LIMIT_80
-#SBATCH --mail-user=brozonoyer_umass_edu
+#SBATCH --mail-user=$USER
 
 set -euo pipefail
 
@@ -47,7 +47,7 @@ fi
 cd "${REPO_ROOT}"
 
 CONDA_ENV=${EVALPLUS_CONDA_ENV:-lmflow}
-CONDA_ROOT=${CONDA_ROOT:-/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/anaconda3}
+CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 mkdir -p "${REPO_ROOT}/logs/${SLURM_JOB_NAME:-evalplus_checkpoint}"
 
 if command -v module >/dev/null 2>&1; then

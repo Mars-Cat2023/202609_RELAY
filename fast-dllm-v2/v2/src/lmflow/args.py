@@ -797,35 +797,38 @@ class FinetunerArguments(TrainingArguments):
         metadata={
             "help": (
                 "Finetuning loss type. 'mlm' (default) preserves Fast-dLLM v2's "
-                "vanilla in-model MDM loss byte-for-byte. 'bptt' enables the "
-                "2-step Loopholing-BPTT loss (FastDLLMBlockBPTTLoss)."
+                "vanilla in-model MDM loss byte-for-byte (Vanilla SFT row in "
+                "Table 2 of the paper). 'bptt' enables the 2-step RELAY loss "
+                "(FastDLLMBlockBPTTLoss) used for the RELAY and RELAY (sg) "
+                "rows in Table 2."
             )
         },
     )
     bptt_threshold: float = field(
         default=0.85,
         metadata={
-            "help": "BPTT step-1 confidence threshold for selecting positions to teacher-force."
+            "help": "RELAY step-1 confidence threshold for selecting positions to teacher-force."
         },
     )
     bptt_top_p: float = field(
         default=0.95,
-        metadata={"help": "BPTT step-1 top-p value for `sample_with_top_p`."},
+        metadata={"help": "RELAY step-1 top-p value for `sample_with_top_p`."},
     )
     bptt_temperature: float = field(
         default=0.0,
         metadata={
-            "help": "BPTT step-1 temperature (0.0 means argmax sampling)."
+            "help": "RELAY step-1 temperature (0.0 means argmax sampling)."
         },
     )
     bptt_unmask_strategy: str = field(
         default="bd",
         metadata={
             "help": (
-                "BPTT on-policy unmask selection strategy. 'bd' preserves the "
-                "existing per-BD-block threshold plus argmax fallback. "
-                "'decode_aligned' restricts selection inside each BD block to "
-                "the earliest inner block that still contains masks."
+                "RELAY on-policy unmask selection strategy. 'bd' (default) "
+                "preserves the per-BD-block threshold plus argmax fallback "
+                "used for the Table 2 numbers. 'decode_aligned' restricts "
+                "selection inside each BD block to the earliest inner block "
+                "that still contains masks (kept for ablation use only)."
             )
         },
     )
@@ -838,53 +841,16 @@ class FinetunerArguments(TrainingArguments):
             )
         },
     )
-    bptt_use_streaming_buffer: bool = field(
-        default=False,
+    bptt_use_relay: bool = field(
+        default=True,
         metadata={
             "help": (
-                "DEPRECATED / NO-OP. The PUMA-style streaming buffer is the "
-                "only BPTT path now (the legacy stateless ``_forward_simple`` "
-                "code path was removed); ``FastDLLMBlockBPTTLoss`` always "
-                "uses the across-call buffer. The flag is kept on the "
-                "dataclass for backwards compatibility with sbatch scripts "
-                "that still pass ``--bptt_use_streaming_buffer 1``; its "
-                "value is ignored."
-            )
-        },
-    )
-    bptt_use_cab: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "If True, use the Cross Attention Bridge (CAB) for BPTT "
-                "hidden-state carry. If False (default), use position-guarded "
-                "LayerNorm loopholing (Ablation A): a zero-init LayerNorm "
-                "additive restricted to mask-token positions only."
-            )
-        },
-    )
-    bptt_use_mlp_carry: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "If True, use MLP-bottleneck carry: h_t through a CAB-style "
-                "bottleneck MLP, then LayerNorm, add at mask positions. "
-                "If False, ``bptt_use_cab`` selects CAB; otherwise Loopguard. "
-                "Ignored when ``bptt_disable_carry`` is set."
-            )
-        },
-    )
-    bptt_disable_carry: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Controlled ablation: keep the 2-step BPTT loss schedule and "
-                "the PUMA streaming buffer, but pass ``h_t=None`` into both "
-                "forwards. Neither CAB nor Loopholing is instantiated, so "
-                "the model is architecturally identical to the vanilla MLM "
-                "checkpoint. This isolates the contribution of the loss / "
-                "buffer machinery from the architectural carry. Overrides "
-                "``bptt_use_cab`` when set."
+                "Enable the RELAY relay-state injection (paper Algorithm 1): "
+                "a zero-init LayerNorm additive on h_t, restricted to mask-"
+                "token positions only. Default True for ``loss_type=bptt`` "
+                "runs (RELAY / RELAY (sg) rows of Table 2). Set False only "
+                "for ablations that keep the 2-step rollout loss schedule "
+                "but pass ``h_t=None`` into both forwards (no relay)."
             )
         },
     )
@@ -892,39 +858,24 @@ class FinetunerArguments(TrainingArguments):
         default=False,
         metadata={
             "help": (
-                "Controlled ablation: detach ``h_s1`` between forward 1 and "
-                "forward 2 so gradients from L2 cannot flow through the "
-                "carry into forward 1. Default ``False`` keeps the full "
-                "BPTT path (current behavior). Set ``True`` to isolate the "
-                "architectural carry's contribution from the BPTT-through-"
-                "carry gradient path -- the model still consumes Loopguard "
-                "/ CAB / MLP carry on forward 2, but only forward-2 "
-                "parameters get gradients from L2 via the carry. Mirrors "
-                "the ``stop_grad_h_s`` flag in stateflow / double-backprop "
-                "(``doublebackprop/loss.py:441``). No-op when "
-                "``bptt_disable_carry=True`` (no carry to detach)."
+                "Detach ``h_s1`` between forward 1 and forward 2 so gradients "
+                "from L2 cannot flow through the relay into forward 1. "
+                "Default ``False`` keeps the full BPTT path (the RELAY row "
+                "in Table 2). Set ``True`` to reproduce the RELAY (sg) row, "
+                "which isolates the architectural relay's contribution from "
+                "the BPTT-through-relay gradient path. No-op when "
+                "``bptt_use_relay=False`` (no relay to detach)."
             )
         },
     )
-    bptt_loophole_layer: int = field(
+    bptt_relay_layer: int = field(
         default=-1,
         metadata={
             "help": (
-                "Zero-based decoder layer index whose hidden state is used as "
-                "Loopguard / loopholing carry. The default -1 preserves the "
-                "current behavior: use the final normalized model hidden state."
-            )
-        },
-    )
-    bptt_loophole_position_guard: str = field(
-        default="mask",
-        metadata={
-            "help": (
-                "Loopguard / loopholing injection guard. 'mask' preserves the "
-                "current behavior: inject only where input_ids are mask tokens. "
-                "'mutable' injects at every mutable noisy-half training position "
-                "(labels != -100, excluding the doubled clean x0 half) and at "
-                "every position of the active decoding block."
+                "Zero-based decoder layer index whose hidden state is read off "
+                "as the relay state h_s. The default -1 (paper setting) uses "
+                "the final normalized model hidden state. Negative indexing "
+                "is supported (e.g. -2 = second-to-last)."
             )
         },
     )

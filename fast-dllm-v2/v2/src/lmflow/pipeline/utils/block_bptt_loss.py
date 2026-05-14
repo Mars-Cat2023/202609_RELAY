@@ -1,4 +1,4 @@
-"""2-step BPTT loss for Fast-dLLM v2 with CAB or position-guarded loopholing.
+"""2-step RELAY loss for Fast-dLLM v2 (paper Algorithm 1).
 
 Preserves Fast-dLLM v2's BD3-LM-style seq-dim ``[x_t || x0]`` doubling and the
 ``gen_mask`` block-diagonal + offset-block-causal attention pattern. Bypasses
@@ -6,55 +6,45 @@ only the parts of the model's training-time noising that are incompatible with
 deterministic all-mask init (the random ``t ~ U[0, 1]`` noising and the
 batch-dim complement).
 
-Hidden-state carry between forward passes is controlled by ``carry_mode``:
+The relay state h_s flows between the two forward passes through a
+position-guarded LayerNorm additive: h_s is zero-padded to ``(B, 2L, D)``
+(matching the doubled ``[x_t || x0]`` embedding) and added through a
+zero-initialized LayerNorm at **mask-token positions only**, so the carried
+state never overrides committed tokens (paper Algorithm 1 line 7,
+``x_emb + R_theta(h)``).
 
-* ``"cab"``  — Cross Attention Bridge: h_s from forward 1 is read via
-  bottleneck cross-attention at the input to forward 2.  The CAB module
-  handles asymmetric Q/KV lengths natively, so h_s is passed as-is (B, L, D).
+Trajectory training uses a persistent rollout buffer (``StreamingBatch``).
+Each slice's partial-mask ``x_input`` and detached relay state ``h_s`` persist
+across calls. Each call advances a slice by ``2 * num_unmasks_per_step``
+reveals; once a slice has no remaining masks it is evicted and replaced by a
+fresh batch row. The model therefore trains on the full unmasking trajectory
+rather than only the high-mask tail it would otherwise see in 2 on-policy
+steps. (See ``streaming_batch.py`` for buffer mechanics.)
 
-* ``"loopholing"`` — Position-guarded LayerNorm additive:  h_s is zero-padded
-  to (B, 2L, D) (matching the doubled ``[x_t || x0]`` embedding) then added
-  through a zero-initialized LayerNorm. By default this happens **only at
-  mask-token positions**. The ``loophole_position_guard="mutable"`` ablation
-  instead injects at every mutable noisy-half position while still excluding
-  the clean ``x0`` half.
-
-* ``"mlp"`` — Same padding and position guard as loopholing, but the
-  injection is ``MLP(h_t)`` (bottleneck MLP, then ``LayerNorm`` on ``d_model``)
-  instead of plain ``LayerNorm(h_t)``.
-
-
-
-* **Buffered** (``use_streaming_buffer=True``). A persistent
-  ``StreamingBatch`` (PUMA, Hou et al. 2025) keeps each slice's partial-mask
-  ``x_input`` and detached CAB carry ``h_s`` between calls. Each call
-  advances a slice by ``2 * num_unmasks_per_step`` reveals before it
-  becomes ready to evict and is replaced by a fresh batch row. The model
-  then trains on the *full* unmasking trajectory rather than only the
-  high-mask tail it would otherwise see in 2 on-policy steps.
-
-Step 1 (both modes)
+Step 1
     Build ``doubled_x1 = cat([x_t1, x0], dim=1)`` of shape ``(B, 2L)``.
     Forward with ``bypass_noising=True``. Apply Fast-dLLM v2's own
     threshold-based selection rule (verbatim from
     ``generation_functions.py:114-123``) **per BD attention block** so every
-    block is guaranteed at least one teacher-force reveal per BPTT step,
+    block is guaranteed at least one teacher-force reveal per RELAY step,
     matching the block-by-block decoding loop in
     ``Fast_dLLM_QwenForCausalLM.generate``. ``L1`` is the mean cross-entropy
-    over **all masked positions** at step 1 (standard MDM loss), providing
-    a stabilizing training signal for the pretrained representations.
+    over **all masked positions** at step 1 (standard MDM loss).
 
 Step 2
     Reveal the ground-truth tokens at the selected positions. Build
-    ``doubled_x2 = cat([revealed_x_t, x0], dim=1)`` and the ``h_t`` carry
-    from forward 1's ``h_s`` (for CAB cross-attention). Forward with the
-    carry. ``L2`` is the mean cross-entropy over the positions still masked
-    at step 2.
+    ``doubled_x2 = cat([revealed_x_t, x0], dim=1)`` and the relay carry
+    ``h_t`` from forward 1's ``h_s`` (zero-padded over the clean half).
+    Forward with the carry. ``L2`` is the mean cross-entropy over the
+    positions still masked at step 2.
 
-The total loss is ``L1 + L2`` and its gradient flows back through the carry
-``h_s1`` into both the CAB parameters and the shared model parameters.
-``h_s2`` is detached and stashed back into the buffer to seed the next
-call's forward 1.
+The total loss is ``L1 + L2`` and its gradient flows back through the
+relay state ``h_s1`` into both the relay LayerNorm parameters and the
+shared backbone parameters (the RELAY row in Table 2). The
+``stop_grad_h_s`` ablation detaches ``h_s1`` between the two forwards, so
+only forward-2 parameters receive gradients via the relay path (the
+RELAY (sg) row in Table 2). ``h_s2`` is detached and stashed back into
+the rollout buffer to seed the next call's forward 1.
 """
 
 from typing import Any, Optional
@@ -97,18 +87,13 @@ class FastDLLMBlockBPTTLoss(nn.Module):
         threshold: float = 0.85,
         top_p: float = 0.95,
         temperature: float = 0.0,
-        carry_mode: str = "cab",
+        use_relay: bool = True,
         tokenizer: Optional[Any] = None,
         stop_grad_h_s: bool = False,
         unmask_strategy: str = "bd",
         inner_block_size: int = 8,
     ):
         super().__init__()
-        if carry_mode not in ("cab", "loopholing", "mlp", "none"):
-            raise ValueError(
-                f"carry_mode must be one of 'cab' / 'loopholing' / 'mlp' / 'none', "
-                f"got {carry_mode!r}"
-            )
         if unmask_strategy not in ("bd", "decode_aligned"):
             raise ValueError(
                 "unmask_strategy must be one of 'bd' / 'decode_aligned', "
@@ -120,27 +105,18 @@ class FastDLLMBlockBPTTLoss(nn.Module):
         self.threshold = threshold
         self.top_p = top_p
         self.temperature = temperature
-        self.carry_mode = carry_mode
         self.unmask_strategy = unmask_strategy
         self.inner_block_size = int(inner_block_size)
-        # ``carry_mode == "none"`` keeps the 2-step forward + PUMA buffer
-        # but skips both the carry-tensor preparation and the model-side
-        # injection (h_t=None on every forward). Useful as a controlled
-        # ablation: it isolates the effect of the BPTT loss schedule and
-        # PUMA streaming from the architectural change of CAB / Loopholing.
-        self.disable_carry = carry_mode == "none"
-        # ``stop_grad_h_s`` (when True) detaches ``h_s1`` between the two
-        # forward passes, so gradients from forward 2 cannot flow back
-        # through the carry into forward 1. Mirrors the
-        # ``stop_grad_h_s`` flag in stateflow / double-backprop
-        # (``doublebackprop/loss.py:441``). This is a controlled ablation
-        # that isolates the contribution of the architectural carry from
-        # the BPTT-through-carry gradient path: with ``stop_grad_h_s=True``,
-        # the model still consumes the Loopguard / CAB / MLP carry on
-        # forward 2, but only forward-2 parameters get gradients from the
-        # carry path -- forward 1's representations are not pushed by L2.
-        # No-op when ``disable_carry`` is set (no carry to detach).
-        self.stop_grad_h_s = bool(stop_grad_h_s) and not self.disable_carry
+        # ``use_relay=False`` keeps the 2-step rollout schedule + buffer but
+        # passes ``h_t=None`` into both forwards, isolating the loss-schedule
+        # contribution from the relay channel itself.
+        self.use_relay = bool(use_relay)
+        # ``stop_grad_h_s`` detaches ``h_s1`` between the two forwards so
+        # gradients from forward 2 cannot flow back through the relay into
+        # forward 1 (the RELAY (sg) row of Table 2). Mirrors the equivalent
+        # flag in the Sudoku codebase (``relay/loss.py``). No-op when the
+        # relay is off (no relay state to detach).
+        self.stop_grad_h_s = bool(stop_grad_h_s) and self.use_relay
         self.train_buffer: StreamingBatch = StreamingBatch()
         self.eval_buffer: StreamingBatch = StreamingBatch()
         self.tokenizer = tokenizer
@@ -350,29 +326,26 @@ class FastDLLMBlockBPTTLoss(nn.Module):
     def _prepare_h_t(self, h_s: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
         """Reshape ``h_s`` from the previous forward into ``h_t`` for the next.
 
-        CAB cross-attention accepts ``(B, L, D)`` directly.  Loopholing is an
-        element-wise add on the doubled ``(B, 2L, D)`` embedding, so we
-        zero-pad the ``x0`` half. The model's position guard then decides
-        whether injection is mask-only (default) or all mutable positions.
+        The relay injection is an element-wise add on the doubled
+        ``(B, 2L, D)`` ``[x_t || x0]`` embedding, so we zero-pad the ``x0``
+        half here. The model's mask-position guard then restricts the
+        non-zero LayerNorm delta to the noisy-half mask tokens.
 
         We always right-shift the carry first via ``_shift_h_s`` so that the
-        carried representation at position ``i`` corresponds to "the state
-        used to predict token i", aligning with the right-shifted logits
-        used for loss / unmask selection. Without this shift, every CAB
-        query / Loopholing add at position ``i`` is being fed the carry
-        for position ``i+1``, i.e. an off-by-one mismatch.
+        relay state at position ``i`` corresponds to "the state used to
+        predict token i", aligning with the right-shifted logits used for
+        loss / unmask selection. Without this shift, every relay add at
+        position ``i`` would be fed the state for position ``i+1`` (an
+        off-by-one mismatch).
 
-        Returns ``None`` when ``carry_mode == "none"`` so the model's forward
-        short-circuits the injection branch entirely (no architectural
-        difference vs. the vanilla path; isolates the PUMA / 2-step-loss
-        contribution).
+        Returns ``None`` when the relay is disabled, so the model's forward
+        short-circuits the injection branch entirely (used by the
+        rollout-only ablation that keeps the 2-step loss but no relay).
         """
-        if h_s is None or self.disable_carry:
+        if h_s is None or not self.use_relay:
             return None
         h_s = self._shift_h_s(h_s)
-        if self.carry_mode in ("loopholing", "mlp"):
-            return torch.cat([h_s, torch.zeros_like(h_s)], dim=1)
-        return h_s
+        return torch.cat([h_s, torch.zeros_like(h_s)], dim=1)
 
     def forward(
         self,
@@ -551,49 +524,27 @@ class FastDLLMBlockBPTTLoss(nn.Module):
         if carry_delta_mask_norm is not None:
             m["bptt/carry_delta_norm"] = carry_delta_mask_norm.detach().float().item()
 
-        # ---- Critical: is the carry gate actually opening? ----
-        # CAB injects ``delta = w_up(zero_bridge(x_b))`` where
-        # ``zero_bridge`` is a near-identity-but-zero-scaled RMSNorm with
-        # ``gamma`` init to 0 and ``beta`` init to 0.001. Loopholing
-        # injects ``delta = h_t_layer_norm(h_t)`` with weight init to 0.
-        # If these gates stay at their init values, the carry contributes
-        # nothing — diagnostic for "is the carry being used at all".
+        # ---- Critical: is the relay gate actually opening? ----
+        # The relay injects ``delta = relay_layer_norm(h_t)`` with the
+        # LayerNorm weight init to 0, so the gate is closed at the start of
+        # training. If the LayerNorm weight norm stays at 0 it means the
+        # relay never learned to contribute -- the most informative single
+        # signal for "is RELAY actually being used".
         #
         # Use ``_safe_param_norm`` instead of raw ``.detach().norm()`` so the
-        # number is correct under DeepSpeed ZeRO-3 — large parameters like
-        # ``cab.w_up.weight`` are partitioned across ranks and the local
-        # ``.data`` is a 0-element stub, which would otherwise report 0.
+        # number is correct under DeepSpeed ZeRO-3 -- partitioned parameters
+        # have a 0-element ``.data`` stub on each rank, which would
+        # otherwise report 0.
         if base is not None:
             backbone = getattr(base, "model", base)
-            if getattr(backbone, "use_cab", False) and hasattr(backbone, "cab"):
-                zb = backbone.cab.zero_bridge
-                m["bptt/cab_gamma_norm"] = _safe_param_norm(zb.gamma)
-                m["bptt/cab_beta_norm"] = _safe_param_norm(zb.beta)
-                m["bptt/cab_w_up_norm"] = _safe_param_norm(backbone.cab.w_up.weight)
-            elif (
-                getattr(backbone, "use_loopholing", False)
-                and hasattr(backbone, "h_t_layer_norm")
+            if (
+                getattr(backbone, "use_relay", False)
+                and hasattr(backbone, "relay_layer_norm")
             ):
-                ln = backbone.h_t_layer_norm
-                m["bptt/loop_ln_weight_norm"] = _safe_param_norm(ln.weight)
-                m["bptt/loop_ln_bias_norm"] = _safe_param_norm(ln.bias)
-                m["bptt/loophole_position_guard_mutable"] = float(
-                    getattr(backbone, "loophole_position_guard", "mask") == "mutable"
-                )
-            elif (
-                getattr(backbone, "use_mlp_carry", False)
-                and hasattr(backbone, "mlp_carry")
-            ):
-                mc = backbone.mlp_carry
-                m["bptt/mlp_carry_w_up_norm"] = _safe_param_norm(mc.w_up.weight)
-                m["bptt/mlp_carry_out_ln_weight_norm"] = _safe_param_norm(
-                    mc.out_layer_norm.weight
-                )
-                if mc.out_layer_norm.bias is not None:
-                    m["bptt/mlp_carry_out_ln_bias_norm"] = _safe_param_norm(
-                        mc.out_layer_norm.bias
-                    )
+                ln = backbone.relay_layer_norm
+                m["bptt/relay_ln_weight_norm"] = _safe_param_norm(ln.weight)
+                m["bptt/relay_ln_bias_norm"] = _safe_param_norm(ln.bias)
 
-        m["bptt/carry_disabled"] = float(self.disable_carry)
+        m["bptt/relay_enabled"] = float(self.use_relay)
         m["bptt/stop_grad_h_s"] = float(self.stop_grad_h_s)
         return m

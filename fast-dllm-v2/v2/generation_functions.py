@@ -34,11 +34,7 @@ class Fast_dLLM_QwenForCausalLM:
         use_carry=False,
         return_nfe_stats=False,
     ):
-        _has_carry = use_carry and (
-            getattr(self.config, "use_cab", False)
-            or getattr(self.config, "use_loopholing", False)
-            or getattr(self.config, "use_mlp_carry", False)
-        )
+        _has_carry = use_carry and bool(getattr(self.config, "use_relay", False))
         num_blocks = max_new_tokens // block_size + seq_len.max().item() // block_size
         batch_size = input_ids.shape[0]
 

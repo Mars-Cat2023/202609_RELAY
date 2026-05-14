@@ -1,0 +1,34 @@
+# Top-level relay/ repository .gitignore.
+# Each sub-project has its own .gitignore for stuff that lives inside it
+# (sudoku/.gitignore and fast-dllm-v2/.gitignore); this file covers what
+# lives at the relay repo root.
+
+# Python build / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Local virtualenvs / package caches that contributors may create at the
+# top-level (the canonical envs live inside each sub-project, but it's
+# common to also create a "scratch" venv at the repo root).
+.venv*
+.conda_pkgs*
+
+# Editor / OS noise
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.code-workspace
+
+# Cursor / agent scratch dirs
+.cursor/
+.cursor/plans
+.specstory
+.cursorindexingignore
+
+# HF cache (only relevant if a user runs scripts from the repo root rather
+# than from a sub-project).
+hf_home/
+hf_datasets_cache/

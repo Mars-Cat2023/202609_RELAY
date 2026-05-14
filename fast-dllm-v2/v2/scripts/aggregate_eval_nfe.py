@@ -38,14 +38,12 @@ def _find_nfe_stats(results_path: Path) -> dict[str, Any]:
 
 def _variant_from_model_path(model_path: str, run_tag: str) -> str:
     src = f"{model_path} {run_tag}".lower()
-    if "bptt_loopguard_stopgrad" in src and "allpos" in src:
-        return "stop-grad-allpos"
-    if "bptt_loopguard" in src and "allpos" in src:
-        return "loopguard-allpos"
-    if "bptt_loopguard_stopgrad" in src:
-        return "stop-grad"
-    if "bptt_loopguard" in src:
-        return "loopguard"
+    # Match in order of specificity: stop-grad before relay because the
+    # relay-sg checkpoint dir is named ``bptt_relay_stopgrad_*``.
+    if "bptt_relay_stopgrad" in src or "relay_sg" in src or "relay-sg" in src:
+        return "relay-sg"
+    if "bptt_relay" in src or src.endswith(" relay") or "/relay/" in src or " relay " in src:
+        return "relay"
     if "vanilla" in src:
         return "vanilla"
     if "hf_baseline_fast_dllm_v2_1.5b" in src or "efficient-large-model" in src:

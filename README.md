@@ -1,51 +1,10 @@
 # RELAY: Learned Relay Representations for Forward-Thinking Discrete Diffusion Models
 
-Repository for the paper "Learned Relay Representations for Forward-Thinking Discrete Diffusion Models."
+Code release for the paper *Learned Relay Representations for Forward-Thinking Discrete Diffusion Models* (NeurIPS 2026 submission). When Masked Diffusion Models (MDMs) generate sequences through iterative refinement, the rich internal computation accumulated over masked positions is discarded at the end of each forward pass — forcing every subsequent denoising step to start from scratch. We call this the **hard reset** problem. To address it, we propose **RELAY**: at each denoising step the model carries its last-layer hidden states forward as a learned relay, giving the next forward pass direct access to prior continuous computation. The relay is trained end-to-end via truncated backpropagation through time (BPTT), shaping it to be maximally informative for the next several denoising steps. RELAY is architecture-agnostic, leaves the inference-time decoding procedure of MDMs unchanged, and is compatible with block diffusion and KV caching.
 
-When Masked Diffusion Models (MDMs) generate sequences through iterative refinement, the rich internal computation accumulated over masked positions is discarded at the end of each forward pass—forcing every subsequent denoising step to start from scratch. We call this the *hard reset* problem. To address it, we propose **RELAY**, a method that makes MDMs *forward-thinking*: at each denoising step the model carries its last-layer hidden states forward as a learned relay, giving the next forward pass direct access to prior continuous computation. The relay is trained end-to-end via truncated backpropagation through time (BPTT), shaping it to be maximally informative for the next several denoising steps. RELAY is architecture-agnostic, leaves the inference-time decoding procedure unchanged, and is compatible with block diffusion and KV caching.
+We validate the design choices on a Sudoku-based planning task, then scale RELAY to **Fast-dLLM v2 1.5B** (a state-of-the-art block-diffusion language model) — outperforming standard supervised fine-tuning on coding tasks by up to 3.7% in accuracy and 32% in inference latency.
 
-We validate design choices on a Sudoku-based planning task, then scale RELAY to Fast-dLLM v2 1.5B—a state-of-the-art diffusion language model—outperforming standard supervised fine-tuning on coding tasks by up to 3.7% in accuracy and 32% in inference latency.
-
----
-
-## Installation
-
-Each subdirectory has its own environment. Both require Python 3.11.10.
-
-### `sudoku/`
-
-```bash
-git clone --recurse-submodules <repo-url>
-cd relay/sudoku
-conda create -p .venv_bptt python=3.11.10 pip ipykernel -y
-conda activate ./.venv_bptt
-pip install -e xlm-core
-pip install -e xlm-core/xlm-models
-pip install -r requirements.txt
-```
-
-Copy `.env.example` (or create a `.env` file at the project root) with at minimum:
-
-```bash
-WANDB_ENTITY=<your-entity>
-WANDB_PROJECT=BPTT
-DATA_DIR=data
-HF_HOME=hf_home
-LOG_DIR=logs
-PROJECT_ROOT=.
-```
-
-### `fast-dllm-v2/`
-
-```bash
-cd relay/fast-dllm-v2
-conda create -p .venv_dllm python=3.11.10 pip ipykernel -y
-conda activate ./.venv_dllm
-conda install mpi4py -y
-cd v2
-pip install -e .           # core package
-pip install -e '.[eval]'   # adds lm-eval for benchmark evaluation
-```
+> **Anonymized public mirror.** A read-only anonymized copy of this repository is available at <https://anonymous.4open.science/r/relay-1D24>. The mirror is **not** auto-synced from GitHub; after pushing changes here, click *Force update* on the anon4open page (see [Anonymized release](#anonymized-release) below).
 
 ---
 
@@ -53,71 +12,142 @@ pip install -e '.[eval]'   # adds lm-eval for benchmark evaluation
 
 ```
 relay/
-├── sudoku/          # ablation study on a Sudoku planning task
-└── fast-dllm-v2/    # scaling RELAY to Fast-dLLM v2 1.5B on coding benchmarks
+├── sudoku/         design study on Sudoku-Extreme  (Table 1 of the paper)
+└── fast-dllm-v2/   adaptation of Fast-dLLM v2 1.5B (Table 2 of the paper)
 ```
 
----
+The two subdirectories are intentionally independent: each ships its own Python environment, dataset preparation pipeline, training launcher, and evaluation pipeline. Pick the subdirectory that matches the experiments you want to reproduce.
 
-## `sudoku/` — design study
-
-This subdirectory contains the code for the controlled experiments on Sudoku (and related combinatorial planning tasks such as n-queens and graph coloring) that motivate and justify the RELAY design choices.
-
-**Framework.** Training and evaluation are built on top of `xlm-core`, a PyTorch Lightning–based framework for masked language models, accessed here as a git submodule. Experiments are configured with Hydra and submitted to SLURM via scripts in `slurm_scripts/`. The main package is `doublebackprop/`.
-
-**Key source files.**
-
-| File | Role |
-|---|---|
-| `doublebackprop/model.py` | Model definitions. `RotaryTransformerLoopholingModel` is the relay-augmented transformer: it injects `LayerNorm(h_t)` (the relay from the previous step) into the token embedding layer and reads the new relay `h_s` from the final encoder hidden state. Also defines `BottleneckMLPBridge` (a small bottleneck MLP that transforms the carry) and `CrossAttentionBridge` (CAB, a cross-attention module that attends from token embeddings to the carried state). |
-| `doublebackprop/loss.py` | Loss functions. `LoopholingBPTTLoss` unrolls the model for T denoising steps and applies truncated BPTT through the relay. `LoopholingBPTTPumaLoss` adds a PUMA-style streaming buffer that maintains persistent relay states across training batches. |
-| `doublebackprop/predictor.py` | Inference-time decoding: confidence-threshold unmasking with relay forwarding across steps. |
-| `doublebackprop/datamodule.py` | Data loading and batching for Sudoku (extreme/hard/deduction difficulties), n-queens, and graph coloring. |
-| `doublebackprop/streaming_batch.py` | `StreamingBatch`: per-slot persistent storage of relay states for PUMA-style training. |
-| `doublebackprop/history.py` | Trajectory history tracking for multi-step BPTT unrolls. |
-| `doublebackprop/metrics.py` | Sudoku solution validity and completion metrics. |
-
-**Training variants** (configured via Hydra experiment files):
-
-- `sudoku_extreme_mlm_uniform` — standard MLM baseline, no relay.
-- `sudoku_extreme_loopholing_bptt` — RELAY with truncated BPTT; `stop_grad_h_s=false` enables full gradient flow through the relay, `stop_grad_h_s=true` is the no-BPTT ablation.
-- `sudoku_extreme_loopholing_bptt_puma` — RELAY with BPTT + PUMA streaming buffer.
-
-See `SUDOKU_COMMANDS.md` and `PUZZLE_TRAINING_COMMANDS.md` for complete training commands. Plotting notebooks live under `plotting_scripts/`, and decode trajectory visualization tools under `visualization/`.
+| Sub-project | Paper section | W&B project | Environment |
+|---|---|---|---|
+| [`sudoku/`](sudoku) | §4.1 (Table 1, Figure 2) | [`ilm-extensions/BPTT-sudoku`](https://wandb.ai/ilm-extensions/BPTT-sudoku) | `.venv_relay_sudoku` (`python -m venv`, Python 3.11.10) |
+| [`fast-dllm-v2/`](fast-dllm-v2) | §4.2 (Table 2, Figure 3) | [`ilm-extensions/Fast-dLLM-v2-evals`](https://wandb.ai/ilm-extensions/Fast-dLLM-v2-evals) | `lmflow` conda env (Python 3.10) |
 
 ---
 
-## `fast-dllm-v2/` — scaling to a 1.5B diffusion language model
+## Reproducing the paper
 
-This subdirectory scales RELAY to Fast-dLLM v2 1.5B (a block-diffusion LLM based on Qwen2.5) and evaluates it on coding benchmarks (HumanEval+ and MBPP+).
+### Table 1 — Sudoku-Extreme (`sudoku/`)
 
-**Framework.** Training is built on LMFlow (in `v2/src/lmflow/`) with a custom Fast-dLLM model class under `v2/src/lmflow/models/fast_dllm/`. Generation at inference time is handled by `v2/generation_functions.py`, which patches `QwenForCausalLM.batch_sample` to forward the relay alongside committed tokens across block-diffusion steps.
+Each row is one training objective × one weight-tying condition. The four objectives map to the per-objective Hydra overrides documented in [`sudoku/SUDOKU_COMMANDS.md`](sudoku/SUDOKU_COMMANDS.md):
 
-**Carry modes.** Three relay architectures are supported, selected via `CARRY_MODE`:
+| Objective | What it is | Key Hydra overrides |
+|---|---|---|
+| **MLM** | Mask-uniform CE baseline | `experiment=sudoku_extreme_mlm_uniform` |
+| **Rollout** | Rollout-buffer-only (`K=2`, no relay) | `experiment=sudoku_extreme_relay_bptt loss.with_relay=false predictor.with_relay=false loss.stop_grad_h_s=true` |
+| **RELAY (sg)** | Relay rollout with stop-gradient on `h` | `experiment=sudoku_extreme_relay_bptt loss.with_relay=true loss.stop_grad_h_s=true predictor.with_relay=true` |
+| **RELAY** | Full method: `K=2` BPTT through the relay (paper Algorithm 1) | `experiment=sudoku_extreme_relay_bptt loss.with_relay=true loss.stop_grad_h_s=false loss.num_steps=2 predictor.with_relay=true` |
 
-| `CARRY_MODE` | Mechanism |
-|---|---|
-| `loopguard` | Layer-norm applied to `h_t`; injected as a residual at the model input (lightest carry). |
-| `mlp` | `BottleneckMLPBridge`: two-layer bottleneck MLP with LayerNorm, transforms `h_t` before injection. |
-| `cab` | `CrossAttentionBridge`: cross-attention from token embeddings to the carried state, with a bottleneck projection. |
+Each of the four objectives is run in two weight-tying conditions (`tied` and `untied`), giving the eight rows of Table 1; the paper averages over three training seeds.
 
-**Key source files.**
+```bash
+cd relay/sudoku
 
-| File | Role |
-|---|---|
-| `v2/generation_functions.py` | Block-diffusion generation loop with optional relay forwarding (`use_carry=True`). Handles KV caching and sub-block parallelization. |
-| `v2/train_scripts/finetune_magicoder_oss_bptt.sbatch` | SLURM script for BPTT + PUMA fine-tuning on Magicoder-OSS code data, parameterized by `CARRY_MODE`. |
-| `v2/train_scripts/finetune_magicoder_oss.sbatch` | Vanilla SFT baseline (no relay). |
-| `v2/scripts/generate_evalplus_jsonl.py` | Generates EvalPlus JSONL samples from a checkpoint for HumanEval+ / MBPP+ scoring. |
-| `v2/eval.py` | lm-evaluation-harness integration for non-code tasks (GSM8K, MATH, MMLU, etc.). |
-| `v2/scripts/submit_eval.py` | SLURM wrapper for eval jobs. |
+# 1. Environment + .env setup (one-time)
+#    See sudoku/README.md for the full requirements list.
+python -m venv .venv_relay_sudoku
+source .venv_relay_sudoku/bin/activate
+pip install -e xlm-core
+pip install -e xlm-core/xlm-models
+pip install -e .
 
-**Typical training progression** (each stage fine-tunes from the same base Fast-dLLM v2 1.5B checkpoint):
+# 2. Quick local smoke test (no SLURM, single GPU, 200 steps)
+export PROJECT_ROOT="$PWD"
+python -m xlm.train \
+  experiment=sudoku_extreme_relay_bptt \
+  trainer.max_steps=200 \
+  trainer.val_check_interval=100 \
+  trainer.limit_val_batches=2 \
+  per_device_batch_size=8 \
+  global_batch_size=8 \
+  loggers.wandb=null
 
-1. Vanilla SFT on Magicoder-OSS (`CARRY_MODE` not set).
-2. BPTT + PUMA, no relay (`CARRY_MODE=none`): introduces the BPTT training objective without relay injection; serves as a strong baseline.
-3. BPTT + PUMA + Loopguard (`CARRY_MODE=loopguard`).
-4. BPTT + PUMA + MLP carry (`CARRY_MODE=mlp`).
-5. BPTT + PUMA + CAB (`CARRY_MODE=cab`).
+# 3. Reproduce Table 1 on a SLURM cluster.
+DO=print ./submit_sudoku_300k_sweep.sh         # dry run (prints sbatch args)
+./submit_sudoku_300k_sweep.sh                  # 8 runs, single seed
+./submit_sudoku_300k_seeds_sweep.sh            # 24 runs, seeds 1/2/3 (paper)
 
-See `v2/CODE_COMMANDS.md` for full training and evaluation commands.
+# 4. Aggregate the per-seed runs into Table 1.
+#    See sudoku/SUDOKU_ANALYSIS_COMMANDS.md for the full pipeline.
+./submit_sudoku_qualitative_dumps.sh
+python -m relay.n_way_pair_trajectories ...
+python -m relay.summarize_sudoku_table_from_manifests --tau 0.15 ...
+```
+
+Cluster-specific knobs (`SLURM_RESERVATION`, `SLURM_CONSTRAIN_MLM`, `SLURM_CONSTRAIN_RELAY`, partition, wall-clock) are picked up from environment variables, not hard-coded — so other SLURM-based clusters only need to override these to match local availability. See [`sudoku/SUDOKU_COMMANDS.md`](sudoku/SUDOKU_COMMANDS.md) for the full table.
+
+### Table 2 — Fast-dLLM v2 1.5B (`fast-dllm-v2/`)
+
+Each row is a 200-step adaptation of the off-the-shelf [`Efficient-Large-Model/Fast_dLLM_v2_1.5B`](https://huggingface.co/Efficient-Large-Model/Fast_dLLM_v2_1.5B) on the OpenCodeInstruct + OpenMathInstruct-2 c40m60 mixture (24 000 code rows + 36 000 math rows = 60 000 rows; effective batch size 32; learning rate 5e-6). EvalPlus pass@1 is reported at `threshold=0.85`, BD block 32, sub-block 8, exactly as in Wu et al. (2025b).
+
+| Row | What it is | Launch flags |
+|---|---|---|
+| **Fast-dLLM-v2 (1.5B)** | Off-the-shelf base model | (no training) |
+| **Vanilla SFT** | `--loss_type mlm` (no relay) | `train_scripts/finetune_opencode_openmath.sbatch` |
+| **RELAY (sg)** | `--loss_type bptt --bptt_use_relay 1 --bptt_stop_grad_h_s 1` | `USE_RELAY=1 BPTT_STOP_GRAD_H_S=1 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch` |
+| **RELAY** | `--loss_type bptt --bptt_use_relay 1 --bptt_stop_grad_h_s 0` | `USE_RELAY=1 BPTT_STOP_GRAD_H_S=0 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch` |
+
+```bash
+cd relay/fast-dllm-v2/v2
+
+# 1. Environment (one-time). Defaults assume CONDA_ROOT=${HOME}/miniconda3
+#    and a conda env named "lmflow"; both are overridable via env vars.
+conda create -n lmflow python=3.10 pip ipykernel -y
+conda activate lmflow
+pip install -e .            # core training package
+pip install -e '.[eval]'    # adds the pinned EvalPlus version
+
+# 2. Build the c40m60 mixture (one-time, ~5 minutes; reads from the HF Hub).
+python scripts/prep_opencode_openmath_mix.py \
+  --out_dir data/opencode_openmath_60k_c40m60 \
+  --code_rows 24000 --math_rows 36000 --require_code_def
+
+# 3. Quick local smoke test (no SLURM, 1 GPU, 5 optimizer steps).
+DRY_RUN=1 BLOCK_SIZE=512 NUM_TRAIN_EPOCHS=1 SAVE_STEPS=5 \
+  bash scripts/launch_opencode_openmath_c40m60_4run.sh
+
+# 4. Reproduce Table 2 on a SLURM cluster (3 jobs, 2x A100-80GB each).
+bash scripts/launch_opencode_openmath_c40m60_4run.sh
+
+# 5. Evaluate any saved checkpoint with EvalPlus (HumanEval+ / MBPP+).
+python scripts/generate_evalplus_jsonl.py \
+  --model_path output_models/opencode_openmath_60k_c40m60_1p5B/<run-dir>/checkpoint-200 \
+  --dataset humaneval --threshold 0.85 --use_carry           # use --use_carry only for relay
+evalplus.evaluate --dataset humaneval --samples <jsonl-out>  # pinned to evalplus==0.3.1
+```
+
+Cluster-specific knobs (`CONDA_ROOT`, `CONDA_ENV`, `RESERVATION`, partition, wall-clock) are picked up from environment variables; copy [`fast-dllm-v2/v2/.env.example`](fast-dllm-v2/v2/.env.example) to `.env` to set defaults. The kept sbatch wrappers (`train_scripts/*.sbatch`) all use `--mail-user=$USER` and `${HOME}/miniconda3` defaults so they require no edits to run on a different cluster.
+
+> **Released RELAY checkpoints.** The two adapted models that produce the **RELAY (sg)** and **RELAY** rows of Table 2 are uploaded to the Hub:
+>
+> - [`brozonoyer/relay-fastdllm-v2-c40m60-relay-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-step200) — RELAY (full BPTT)
+> - [`brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200) — RELAY (sg)
+>
+> Both ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `relay_layer_norm.{weight,bias}` tensor in the safetensors shard. Loading either with `AutoModelForCausalLM.from_pretrained(..., trust_remote_code=True)` from this repo's vendored `modeling.py` will instantiate the relay LayerNorm before `load_state_dict`, so all keys map cleanly. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline used to produce the Hub artifacts (it does **not** modify your on-disk training checkpoints).
+
+---
+
+## Anonymized release
+
+The paper points readers at the anonymized mirror <https://anonymous.4open.science/r/relay-1D24>, which is a **manual snapshot** of this GitHub repository. Pushing to GitHub does **not** automatically refresh the mirror; instead:
+
+1. Push the changes to the GitHub repository.
+2. Open the anon4open URL above and click the **Force update** button (top-right). The service re-fetches the public state of the repo and rebuilds the snapshot.
+3. Optionally verify by querying the snapshot API: `curl https://anonymous.4open.science/api/repo/relay-1D24` should report the new commit timestamp.
+
+For the camera-ready, request a fresh anonymous slug if the snapshot has accidentally been updated past the submission deadline.
+
+---
+
+## Citation
+
+```bibtex
+@inproceedings{relay2026,
+  title  = {Learned Relay Representations for Forward-Thinking Discrete Diffusion Models},
+  author = {Anonymous},
+  booktitle = {Submitted to NeurIPS 2026},
+  year   = {2026}
+}
+```
+
+The Fast-dLLM v2 sub-project additionally uses code from Wu et al. ([arXiv:2509.26328](https://arxiv.org/abs/2509.26328)); its citation is in [`fast-dllm-v2/v2/README.md`](fast-dllm-v2/v2/README.md).

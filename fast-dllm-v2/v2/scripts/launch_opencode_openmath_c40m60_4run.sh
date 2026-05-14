@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Submit the four 2-GPU OpenCode/OpenMath c40m60 ablations concurrently.
+# Submit the three reported OpenCode/OpenMath c40m60 runs concurrently.
+# These reproduce the rows of Table 2 (paper) for the c40m60 mixture:
+#   - vanilla   : Vanilla SFT (loss_type=mlm, no relay)
+#   - relay_sg  : RELAY (sg)  (loss_type=bptt, use_relay=True, stop_grad_h_s=1)
+#   - relay     : RELAY       (loss_type=bptt, use_relay=True, stop_grad_h_s=0)
 #
 # Run from Fast-dLLM/v2 after data prep:
 #   bash scripts/launch_opencode_openmath_c40m60_4run.sh
 #
 # Set DRY_RUN=1 to print commands without submitting.
+# Set RESERVATION=<name> to add --reservation <name> to every sbatch call.
 
 set -euo pipefail
 
@@ -50,19 +55,14 @@ job_ids[vanilla]=$(submit vanilla \
     --export="${common_export}" \
     train_scripts/finetune_opencode_openmath.sbatch)
 
-job_ids[nocarry]=$(submit nocarry \
-    --job-name=ft_c40m60_bptt_nocarry_1p5B \
-    --export="${common_export},CARRY_MODE=none,BPTT_STOP_GRAD_H_S=0" \
+job_ids[relay_sg]=$(submit relay_sg \
+    --job-name=ft_c40m60_relay_sg_1p5B \
+    --export="${common_export},USE_RELAY=1,BPTT_STOP_GRAD_H_S=1" \
     train_scripts/finetune_opencode_openmath_bptt.sbatch)
 
-job_ids[loopguard_stopgrad]=$(submit loopguard_stopgrad \
-    --job-name=ft_c40m60_bptt_loopguard_stopgrad_1p5B \
-    --export="${common_export},CARRY_MODE=loopguard,BPTT_STOP_GRAD_H_S=1" \
-    train_scripts/finetune_opencode_openmath_bptt.sbatch)
-
-job_ids[loopguard]=$(submit loopguard \
-    --job-name=ft_c40m60_bptt_loopguard_1p5B \
-    --export="${common_export},CARRY_MODE=loopguard,BPTT_STOP_GRAD_H_S=0" \
+job_ids[relay]=$(submit relay \
+    --job-name=ft_c40m60_relay_1p5B \
+    --export="${common_export},USE_RELAY=1,BPTT_STOP_GRAD_H_S=0" \
     train_scripts/finetune_opencode_openmath_bptt.sbatch)
 
 if [ "${DRY_RUN:-0}" = "1" ]; then
@@ -70,7 +70,7 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
 fi
 
 printf "Submitted jobs:\n"
-for key in vanilla nocarry loopguard_stopgrad loopguard; do
+for key in vanilla relay_sg relay; do
     printf "  %-20s %s\n" "${key}" "${job_ids[$key]}"
 done
 

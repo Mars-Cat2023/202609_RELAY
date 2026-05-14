@@ -1,13 +1,14 @@
 #!/bin/bash
 #
-# PUMA + 2-step BPTT + optional carry on the 60k OpenCodeInstruct/OpenMathInstruct-2 mixture.
+# RELAY (paper Algorithm 1) on the 60k OpenCodeInstruct/OpenMathInstruct-2
+# c40m60 mixture. Reproduces the RELAY and RELAY (sg) rows of Table 2.
 #
 # Submit from Fast-dLLM/v2:
-#   CARRY_MODE=none sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch
-#   CARRY_MODE=loopguard BPTT_STOP_GRAD_H_S=1 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch
-#   CARRY_MODE=loopguard BPTT_STOP_GRAD_H_S=0 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch
+#   USE_RELAY=1 BPTT_STOP_GRAD_H_S=0 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch  # RELAY
+#   USE_RELAY=1 BPTT_STOP_GRAD_H_S=1 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch  # RELAY (sg)
+#   USE_RELAY=0 BPTT_STOP_GRAD_H_S=0 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch  # rollout-only ablation
 #
-#SBATCH --job-name=fastdllm_v2_1p5B_opencode_openmath_bptt
+#SBATCH --job-name=fastdllm_v2_1p5B_opencode_openmath_relay
 #SBATCH --partition=gpu,gpu-preempt,superpod-a100
 #SBATCH --constraint=vram80,bf16,ib
 #SBATCH --nodes=1
@@ -20,7 +21,6 @@
 #SBATCH --open-mode=append
 #SBATCH --output=logs/%x/%j.out
 #SBATCH --mail-type=BEGIN,END,FAIL,REQUEUE,TIME_LIMIT_80
-#SBATCH --mail-user=brozonoyer_umass_edu
 
 set -euo pipefail
 
@@ -35,9 +35,13 @@ if [ ! -f "${REPO_ROOT}/train_scripts/finetune.py" ] || [ ! -d "${REPO_ROOT}/src
 fi
 cd "${REPO_ROOT}"
 
+# --- Environment activation ---------------------------------------------
+# CONDA_ENV / CONDA_ROOT default to the values used in the paper experiments
+# but can be overridden per-cluster via env vars (kept this way so that no
+# usernames or absolute paths are baked into the public release).
 CONDA_ENV=${CONDA_ENV:-lmflow}
-CONDA_ROOT=${CONDA_ROOT:-/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/anaconda3}
-mkdir -p "${REPO_ROOT}/logs/${SLURM_JOB_NAME:-fastdllm_v2_1p5B_opencode_openmath_bptt}"
+CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
+mkdir -p "${REPO_ROOT}/logs/${SLURM_JOB_NAME:-fastdllm_v2_1p5B_opencode_openmath_relay}"
 
 if command -v module >/dev/null 2>&1; then
     # shellcheck disable=SC1091
@@ -81,9 +85,10 @@ mkdir -p "${_local_tmp}/triton" "${_local_tmp}/torch_extensions"
 export TRITON_CACHE_DIR=${_local_tmp}/triton
 export TORCH_EXTENSIONS_DIR=${_local_tmp}/torch_extensions
 
+# --- Run config ---------------------------------------------------------
 model_name_or_path=${MODEL_NAME_OR_PATH:-Efficient-Large-Model/Fast_dLLM_v2_1.5B}
-dataset_path=${DATASET_PATH:-data/opencode_openmath_60k/train_conversation}
-recipe_tag=${RECIPE_TAG:-opencode_openmath_60k}
+dataset_path=${DATASET_PATH:-data/opencode_openmath_60k_c40m60/train_conversation}
+recipe_tag=${RECIPE_TAG:-opencode_openmath_60k_c40m60}
 conversation_template=${CONVERSATION_TEMPLATE:-fast_dllm_v2}
 truncation_side=${TRUNCATION_SIDE:-left}
 disable_group_texts=${DISABLE_GROUP_TEXTS:-1}
@@ -95,46 +100,27 @@ case "${model_name_or_path}" in
     *)                    size_tag=$(basename "${model_name_or_path}" | tr -cd 'A-Za-z0-9') ;;
 esac
 
-carry_mode=${CARRY_MODE:-none}
-bptt_use_mlp_carry=0
-case "${carry_mode}" in
-    cab)
-        bptt_use_cab=1
-        bptt_disable_carry=0
-        carry_tag="cab"
-        ;;
-    loopguard|loopholing|loophole)
-        bptt_use_cab=0
-        bptt_disable_carry=0
-        carry_tag="loopguard"
-        ;;
-    mlp)
-        bptt_use_cab=0
-        bptt_use_mlp_carry=1
-        bptt_disable_carry=0
-        carry_tag="mlp"
-        ;;
-    none|nocarry|no-carry|disabled|off)
-        bptt_use_cab=0
-        bptt_disable_carry=1
-        carry_tag="nocarry"
-        ;;
+# --- Relay flags --------------------------------------------------------
+# USE_RELAY=1 (default) reproduces the RELAY rows of Table 2; setting
+# USE_RELAY=0 keeps the 2-step rollout-buffer schedule but disables the
+# relay LayerNorm injection (rollout-only ablation).
+use_relay=${USE_RELAY:-1}
+case "${use_relay}" in
+    1|true|True) use_relay=1; carry_tag="relay" ;;
+    0|false|False) use_relay=0; carry_tag="rollout" ;;
     *)
-        echo "ERROR: unknown CARRY_MODE='${carry_mode}'. Use cab|loopguard|mlp|none." >&2
+        echo "ERROR: USE_RELAY must be 0|1, got '${use_relay}'." >&2
         exit 1
         ;;
 esac
-bptt_loss_carry_mode=${carry_tag}
-[ "${carry_tag}" = "loopguard" ] && bptt_loss_carry_mode="loopholing"
-[ "${carry_tag}" = "nocarry" ] && bptt_loss_carry_mode="none"
 
 bptt_stop_grad_h_s=${BPTT_STOP_GRAD_H_S:-0}
-if [ "${bptt_disable_carry}" = "1" ] && [ "${bptt_stop_grad_h_s}" = "1" ]; then
-    echo "WARNING: BPTT_STOP_GRAD_H_S=1 is a no-op when CARRY_MODE=none; forcing to 0."
+if [ "${use_relay}" = "0" ] && [ "${bptt_stop_grad_h_s}" = "1" ]; then
+    echo "WARNING: BPTT_STOP_GRAD_H_S=1 is a no-op when USE_RELAY=0; forcing to 0."
     bptt_stop_grad_h_s=0
 fi
 stopgrad_tag=""
-[ "${bptt_stop_grad_h_s}" = "1" ] && stopgrad_tag="_stopgrad"
+[ "${bptt_stop_grad_h_s}" = "1" ] && stopgrad_tag="_sg"
 
 per_device_train_batch_size=${PER_DEVICE_TRAIN_BATCH_SIZE:-2}
 gradient_accumulation_steps=${GRADIENT_ACCUMULATION_STEPS:-16}
@@ -150,35 +136,20 @@ save_total_limit=${SAVE_TOTAL_LIMIT:-0}
 bptt_threshold=${BPTT_THRESHOLD:-0.85}
 bptt_top_p=${BPTT_TOP_P:-0.95}
 bptt_temperature=${BPTT_TEMPERATURE:-0.0}
-bptt_use_streaming_buffer=${BPTT_USE_STREAMING_BUFFER:-1}
 bptt_unmask_strategy=${BPTT_UNMASK_STRATEGY:-bd}
 bptt_inner_block_size=${BPTT_INNER_BLOCK_SIZE:-8}
-bptt_loophole_layer=${BPTT_LOOPHOLE_LAYER:--1}
-bptt_loophole_position_guard=${BPTT_LOOPHOLE_POSITION_GUARD:-mask}
-case "${bptt_loophole_position_guard}" in
-    mask|mutable) ;;
-    *)
-        echo "ERROR: BPTT_LOOPHOLE_POSITION_GUARD must be mask|mutable, got '${bptt_loophole_position_guard}'." >&2
-        exit 1
-        ;;
-esac
+bptt_relay_layer=${BPTT_RELAY_LAYER:--1}
 
 unmask_tag=""
 if [ "${bptt_unmask_strategy}" != "bd" ]; then
     unmask_strategy_slug=${bptt_unmask_strategy//_/}
     unmask_tag="_${unmask_strategy_slug}${bptt_inner_block_size}"
 fi
-loophole_layer_tag=""
-if [ "${carry_tag}" = "loopguard" ] && [ "${bptt_loophole_layer}" != "-1" ]; then
-    loophole_layer_tag="_layer${bptt_loophole_layer}"
-fi
-loophole_guard_tag=""
-if [ "${carry_tag}" = "loopguard" ] && [ "${bptt_loophole_position_guard}" != "mask" ]; then
-    loophole_guard_tag="_allpos"
+relay_layer_tag=""
+if [ "${use_relay}" = "1" ] && [ "${bptt_relay_layer}" != "-1" ]; then
+    relay_layer_tag="_layer${bptt_relay_layer}"
 fi
 
-buf_tag="puma"
-[ "${bptt_use_streaming_buffer}" = "0" ] && buf_tag="nobuf"
 precision_flag="--bf16"
 precision_tag="bf16"
 use_fp32=${USE_FP32:-0}
@@ -189,10 +160,10 @@ fi
 
 bs_tag="bs${per_device_train_batch_size}x${gradient_accumulation_steps}x2_ep${num_train_epochs}"
 output_models_root=${OUTPUT_MODELS_ROOT:-output_models}
-run_name=${RUN_NAME:-"bptt_${carry_tag}${stopgrad_tag}${unmask_tag}${loophole_layer_tag}${loophole_guard_tag}_${size_tag}_${recipe_tag}_${buf_tag}_nopack${block_size}_${bs_tag}_lr${learning_rate}_v2"}
-output_dir=${OUTPUT_DIR:-${output_models_root}/${recipe_tag}_${size_tag}/bptt_${carry_tag}${stopgrad_tag}${unmask_tag}${loophole_layer_tag}${loophole_guard_tag}_puma_nopack${block_size}_${bs_tag}_lr${learning_rate}}
-bptt_param_tags="carry_mode=${bptt_loss_carry_mode},threshold=${bptt_threshold},top_p=${bptt_top_p},temperature=${bptt_temperature},stop_grad_h_s=${bptt_stop_grad_h_s},unmask_strategy=${bptt_unmask_strategy},inner_block_size=${bptt_inner_block_size},loophole_layer=${bptt_loophole_layer},loophole_position_guard=${bptt_loophole_position_guard}"
-export WANDB_TAGS=${WANDB_TAGS:-"bptt,${carry_tag},${bptt_param_tags},${size_tag},${recipe_tag},${buf_tag},${precision_tag},${bs_tag},carryshift,v2"}
+run_name=${RUN_NAME:-"bptt_${carry_tag}${stopgrad_tag}${unmask_tag}${relay_layer_tag}_${size_tag}_${recipe_tag}_nopack${block_size}_${bs_tag}_lr${learning_rate}"}
+output_dir=${OUTPUT_DIR:-${output_models_root}/${recipe_tag}_${size_tag}/bptt_${carry_tag}${stopgrad_tag}${unmask_tag}${relay_layer_tag}_nopack${block_size}_${bs_tag}_lr${learning_rate}}
+bptt_param_tags="use_relay=${use_relay},threshold=${bptt_threshold},top_p=${bptt_top_p},temperature=${bptt_temperature},stop_grad_h_s=${bptt_stop_grad_h_s},unmask_strategy=${bptt_unmask_strategy},inner_block_size=${bptt_inner_block_size},relay_layer=${bptt_relay_layer}"
+export WANDB_TAGS=${WANDB_TAGS:-"bptt,${carry_tag}${stopgrad_tag},${bptt_param_tags},${size_tag},${recipe_tag},${precision_tag},${bs_tag},v2"}
 
 deepspeed_args="--master_port=$((10000 + SLURM_JOB_ID % 50000))"
 deepspeed_config=${DEEPSPEED_CONFIG:-configs/ds_config_zero3_no_offload.json}
@@ -206,7 +177,7 @@ resume_arg=""
 [ -n "${latest_checkpoint}" ] && resume_arg="--resume_from_checkpoint ${latest_checkpoint}"
 
 echo "Using DeepSpeed config: ${deepspeed_config}"
-echo "carry_mode=${carry_mode} -> bptt_use_cab=${bptt_use_cab} bptt_use_mlp_carry=${bptt_use_mlp_carry} bptt_disable_carry=${bptt_disable_carry} bptt_stop_grad_h_s=${bptt_stop_grad_h_s}"
+echo "use_relay=${use_relay} stop_grad_h_s=${bptt_stop_grad_h_s} -> tag=${carry_tag}${stopgrad_tag}"
 cmd="deepspeed ${deepspeed_args} \
   train_scripts/finetune.py \
     --model_name_or_path ${model_name_or_path} \
@@ -243,13 +214,9 @@ cmd="deepspeed ${deepspeed_args} \
     --bptt_temperature ${bptt_temperature} \
     --bptt_unmask_strategy ${bptt_unmask_strategy} \
     --bptt_inner_block_size ${bptt_inner_block_size} \
-    --bptt_use_streaming_buffer ${bptt_use_streaming_buffer} \
-    --bptt_use_cab ${bptt_use_cab} \
-    --bptt_use_mlp_carry ${bptt_use_mlp_carry} \
-    --bptt_disable_carry ${bptt_disable_carry} \
+    --bptt_use_relay ${use_relay} \
     --bptt_stop_grad_h_s ${bptt_stop_grad_h_s} \
-    --bptt_loophole_layer ${bptt_loophole_layer} \
-    --bptt_loophole_position_guard ${bptt_loophole_position_guard}"
+    --bptt_relay_layer ${bptt_relay_layer}"
 
 echo "===== JOB INFO ====="
 echo "SLURM_JOB_ID         = ${SLURM_JOB_ID:-<not in slurm>}"
@@ -268,10 +235,9 @@ echo "bptt_top_p           = ${bptt_top_p}"
 echo "bptt_temperature     = ${bptt_temperature}"
 echo "bptt_unmask_strategy = ${bptt_unmask_strategy}"
 echo "bptt_inner_block_size = ${bptt_inner_block_size}"
-echo "bptt_loss_carry_mode = ${bptt_loss_carry_mode}"
+echo "bptt_use_relay       = ${use_relay}"
 echo "bptt_stop_grad_h_s   = ${bptt_stop_grad_h_s}"
-echo "bptt_loophole_layer  = ${bptt_loophole_layer}"
-echo "bptt_loophole_position_guard = ${bptt_loophole_position_guard}"
+echo "bptt_relay_layer     = ${bptt_relay_layer}"
 echo "save_steps           = ${save_steps}"
 echo "save_total_limit     = ${save_total_limit}"
 echo "===== COMMAND ====="

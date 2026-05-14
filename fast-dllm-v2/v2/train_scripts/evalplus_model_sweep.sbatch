@@ -22,7 +22,7 @@
 #SBATCH --open-mode=append
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --mail-type=FAIL,REQUEUE,TIME_LIMIT_80
-#SBATCH --mail-user=brozonoyer_umass_edu
+#SBATCH --mail-user=$USER
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ cd "${REPO_ROOT}"
 mkdir -p logs evalplus_results/magicoder_full_sweep
 
 CONDA_ENV=${EVALPLUS_CONDA_ENV:-venv_fastdllm}
-CONDA_ROOT=${CONDA_ROOT:-/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/anaconda3}
+CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 if [ "${EVALPLUS_SKIP_CONDA:-0}" != "1" ] && [ -f "${CONDA_ROOT}/etc/profile.d/conda.sh" ]; then
     # shellcheck disable=SC1091
     source "${CONDA_ROOT}/etc/profile.d/conda.sh"

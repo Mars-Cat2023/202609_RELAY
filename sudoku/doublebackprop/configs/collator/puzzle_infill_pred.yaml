@@ -1,2 +1,0 @@
-_target_: doublebackprop.datamodule.PuzzleInfillPredCollator
-tokenizer: ${global_components:tokenizer}

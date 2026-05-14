@@ -1,5 +1,5 @@
 """HuggingFace ``Trainer`` subclass that swaps Fast-dLLM v2's in-model MDM
-loss for the 2-step Loopholing-BPTT loss defined in
+loss for the 2-step RELAY loss defined in
 ``block_bptt_loss.FastDLLMBlockBPTTLoss``.
 """
 
@@ -39,7 +39,7 @@ class FastDLLMBPTTTrainer(Trainer):
         threshold: float = 0.85,
         top_p: float = 0.95,
         temperature: float = 0.0,
-        carry_mode: str = "cab",
+        use_relay: bool = True,
         stop_grad_h_s: bool = False,
         unmask_strategy: str = "bd",
         inner_block_size: int = 8,
@@ -68,22 +68,22 @@ class FastDLLMBPTTTrainer(Trainer):
             threshold=threshold,
             top_p=top_p,
             temperature=temperature,
-            carry_mode=carry_mode,
+            use_relay=use_relay,
             tokenizer=self.tokenizer,
             stop_grad_h_s=stop_grad_h_s,
             unmask_strategy=unmask_strategy,
             inner_block_size=inner_block_size,
         )
-        # Cache the names of carry-module parameters so we can isolate their
-        # gradient norm post-backward (most diagnostic signal: is the carry
+        # Cache the names of relay-module parameters so we can isolate their
+        # gradient norm post-backward (most diagnostic signal: is the relay
         # actually learning, or is it getting noise / adversarial gradients?).
         self._carry_param_names = self._collect_carry_param_names(self.model)
 
-    _CARRY_MODULE_NAMES = frozenset({"cab", "h_t_layer_norm", "mlp_carry"})
+    _CARRY_MODULE_NAMES = frozenset({"relay_layer_norm"})
 
     @classmethod
     def _is_carry_param_name(cls, name: str) -> bool:
-        """True for CAB, Loopholing layer norm, and MLP-carry weights.
+        """True for the relay LayerNorm weights.
 
         Match per dotted segment so that the classification is invariant to
         any wrapping prefixes (``module.`` for DDP, ``_orig_mod.`` for

@@ -540,78 +540,42 @@ class Finetuner(BaseTuner):
                     gradient_checkpointing_kwargs={"use_reentrant": False}
                 )
 
-            disable_carry = getattr(training_args, "bptt_disable_carry", False)
-            use_cab = getattr(training_args, "bptt_use_cab", False)
-            use_mlp_carry = getattr(training_args, "bptt_use_mlp_carry", False)
+            use_relay = getattr(training_args, "bptt_use_relay", True)
             # ``stop_grad_h_s`` detaches h_s1 between forwards 1 and 2.
-            # No-op when disable_carry is True (no carry to detach), so
-            # we suppress the flag in that case to keep W&B metrics
-            # honest about what the run is actually doing.
+            # No-op when use_relay is False (no relay to detach), so we
+            # suppress the flag in that case to keep W&B metrics honest
+            # about what the run is actually doing.
             stop_grad_h_s = (
                 getattr(training_args, "bptt_stop_grad_h_s", False)
-                and not disable_carry
+                and use_relay
             )
 
-            if disable_carry:
-                # Architecturally identical to the vanilla MLM model: no CAB,
-                # no h_t_layer_norm. Only the BPTT loss schedule and (if
-                # enabled) the PUMA streaming buffer differ from vanilla SFT.
-                carry_mode = "none"
-                backend_model.config.mask_token_id = data_args.mask_id
-            elif use_cab:
-                carry_mode = "cab"
-                backend_model.config.use_cab = True
-                base_model = backend_model.model if hasattr(backend_model, "model") else backend_model
-                if not getattr(base_model, "use_cab", False):
-                    base_model.use_cab = True
-                    read_layers = getattr(backend_model.config, "read_layers", [-1])
-                    base_model.read_layers = [l if l >= 0 else backend_model.config.num_hidden_layers + l for l in read_layers]
-                    from lmflow.models.fast_dllm.modeling import CrossAttentionBridge
-                    base_model.cab = CrossAttentionBridge(backend_model.config).to(
-                        device=next(backend_model.parameters()).device,
-                        dtype=next(backend_model.parameters()).dtype,
-                    )
-            elif use_mlp_carry:
-                carry_mode = "mlp"
-                backend_model.config.use_mlp_carry = True
-                backend_model.config.mask_token_id = data_args.mask_id
-                base_model = backend_model.model if hasattr(backend_model, "model") else backend_model
-                if not getattr(base_model, "use_mlp_carry", False):
-                    base_model.use_mlp_carry = True
-                    from lmflow.models.fast_dllm.modeling import MLPCarryBridge
-                    base_model.mlp_carry = MLPCarryBridge(backend_model.config).to(
-                        device=next(backend_model.parameters()).device,
-                        dtype=next(backend_model.parameters()).dtype,
-                    )
-            else:
-                carry_mode = "loopholing"
-                backend_model.config.use_loopholing = True
-                backend_model.config.mask_token_id = data_args.mask_id
-                backend_model.config.loophole_layer = getattr(
-                    training_args, "bptt_loophole_layer", -1
+            backend_model.config.mask_token_id = data_args.mask_id
+            backend_model.config.use_relay = bool(use_relay)
+            backend_model.config.relay_layer = getattr(
+                training_args, "bptt_relay_layer", -1
+            )
+
+            if use_relay:
+                # Attach the zero-init relay LayerNorm to the inner
+                # ``Fast_dLLM_QwenModel`` if the underlying checkpoint did not
+                # ship one (common for adaptation from vanilla Fast-dLLM v2).
+                base_model = (
+                    backend_model.model if hasattr(backend_model, "model") else backend_model
                 )
-                backend_model.config.loophole_position_guard = getattr(
-                    training_args, "bptt_loophole_position_guard", "mask"
-                )
-                if backend_model.config.loophole_position_guard not in ("mask", "mutable"):
-                    raise ValueError(
-                        "bptt_loophole_position_guard must be 'mask' or 'mutable', "
-                        f"got {backend_model.config.loophole_position_guard!r}"
-                    )
-                base_model = backend_model.model if hasattr(backend_model, "model") else backend_model
-                base_model.loophole_layer = backend_model.config.loophole_layer
-                base_model.loophole_position_guard = backend_model.config.loophole_position_guard
-                if not getattr(base_model, "use_loopholing", False):
-                    base_model.use_loopholing = True
+                base_model.use_relay = True
+                base_model.relay_layer = backend_model.config.relay_layer
+                if not hasattr(base_model, "relay_layer_norm"):
                     import torch.nn as nn
-                    base_model.h_t_layer_norm = nn.LayerNorm(
+
+                    base_model.relay_layer_norm = nn.LayerNorm(
                         backend_model.config.hidden_size,
                         eps=backend_model.config.rms_norm_eps,
                     ).to(
                         device=next(backend_model.parameters()).device,
                         dtype=next(backend_model.parameters()).dtype,
                     )
-                    nn.init.zeros_(base_model.h_t_layer_norm.weight)
+                    nn.init.zeros_(base_model.relay_layer_norm.weight)
 
             from lmflow.pipeline.utils.bptt_trainer import FastDLLMBPTTTrainer
 
@@ -621,7 +585,7 @@ class Finetuner(BaseTuner):
                     threshold=training_args.bptt_threshold,
                     top_p=training_args.bptt_top_p,
                     temperature=training_args.bptt_temperature,
-                    carry_mode=carry_mode,
+                    use_relay=use_relay,
                     stop_grad_h_s=stop_grad_h_s,
                     unmask_strategy=training_args.bptt_unmask_strategy,
                     inner_block_size=training_args.bptt_inner_block_size,
@@ -709,7 +673,7 @@ class Finetuner(BaseTuner):
             from lmflow.pipeline.utils.evalplus_on_save_callback import EvalPlusOnSaveCallback
 
             if getattr(training_args, "loss_type", "mlm") == "bptt":
-                evalplus_use_carry = not getattr(training_args, "bptt_disable_carry", False)
+                evalplus_use_carry = bool(getattr(training_args, "bptt_use_relay", True))
             else:
                 evalplus_use_carry = getattr(training_args, "evalplus_use_carry", False)
             trainer_callbacks.append(

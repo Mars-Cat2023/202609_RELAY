@@ -338,166 +338,6 @@ class Fast_dLLM_QwenDecoderLayer(GradientCheckpointingLayer):
 
 
 
-class ZeroBridgeRMSNorm(nn.Module):
-    """Zero-initialized RMSNorm that starts as near-identity transform."""
-    def __init__(self, size: int, eps: float = 1e-5):
-        super().__init__()
-        self.eps = eps
-        self.gamma = nn.Parameter(torch.zeros(size))
-        self.beta = nn.Parameter(torch.full((size,), 0.001))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        orig_dtype = x.dtype
-        x = x.to(torch.float32)
-        variance = x.pow(2).mean(-1, keepdim=True)
-        x = x * torch.rsqrt(variance + self.eps)
-        return (self.gamma * x + self.beta).to(orig_dtype)
-
-
-class CABRMSNorm(nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, hidden_states):
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return (self.weight * hidden_states).to(input_dtype)
-
-
-class CrossAttentionBridge(nn.Module):
-    """Bottleneck cross-attention module that reads from previous-step hidden
-    states (h_t) and injects a low-rank perturbation into the current
-    embeddings, gated through a ZeroBridgeRMSNorm."""
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        d_model = config.hidden_size
-        d_b = getattr(config, "cab_bottleneck_dim", 128)
-        d_ff = getattr(config, "cab_mlp_expansion_dim", 512)
-
-        self.n_heads = getattr(config, "cab_n_heads", 8)
-        self.n_kv_heads = getattr(config, "cab_n_kv_heads", 4)
-        assert d_b % self.n_heads == 0
-        self.head_dim = d_b // self.n_heads
-
-        self.w_down = nn.Linear(d_model, d_b, bias=False)
-        self.w_down_h = nn.Linear(d_model, d_b, bias=False)
-
-        self.attn_norm_x = CABRMSNorm(hidden_size=d_b)
-        self.attn_norm_h = CABRMSNorm(hidden_size=d_b)
-
-        self.w_q = nn.Linear(d_b, d_b, bias=False)
-        self.w_k = nn.Linear(d_b, self.n_kv_heads * self.head_dim, bias=False)
-        self.w_v = nn.Linear(d_b, self.n_kv_heads * self.head_dim, bias=False)
-        self.w_out = nn.Linear(d_b, d_b, bias=False)
-
-        self.mlp_norm = CABRMSNorm(hidden_size=d_b)
-        self.w1 = nn.Linear(d_b, d_ff, bias=False)
-        self.w2 = nn.Linear(d_ff, d_b, bias=False)
-        self.w3 = nn.Linear(d_b, d_ff, bias=False)
-
-        rms_eps = getattr(config, "rms_norm_eps", 1e-6)
-        self.zero_bridge = ZeroBridgeRMSNorm(size=d_b, eps=rms_eps)
-        self.w_up = nn.Linear(d_b, d_model, bias=False)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        std = getattr(self.config, "initializer_range", 0.02)
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=std)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-        nn.init.zeros_(self.zero_bridge.gamma)
-        nn.init.constant_(self.zero_bridge.beta, 0.001)
-
-    def forward(self, x: torch.Tensor, h_t: torch.Tensor) -> torch.Tensor:
-        B, L, _ = x.shape
-        _, S, _ = h_t.shape
-
-        x_b = self.w_down(x)
-        h_b = self.w_down_h(h_t)
-
-        x_norm = self.attn_norm_x(x_b)
-        h_norm = self.attn_norm_h(h_b)
-
-        q = self.w_q(x_norm).view(B, L, self.n_heads, self.head_dim).transpose(1, 2)
-        k = self.w_k(h_norm).view(B, S, self.n_kv_heads, self.head_dim).transpose(1, 2)
-        v = self.w_v(h_norm).view(B, S, self.n_kv_heads, self.head_dim).transpose(1, 2)
-
-        if self.n_heads != self.n_kv_heads:
-            num_groups = self.n_heads // self.n_kv_heads
-            q = q.view(B, self.n_kv_heads, num_groups, L, self.head_dim)
-            k = k.unsqueeze(2)
-            v = v.unsqueeze(2)
-            a = F.scaled_dot_product_attention(q, k, v, is_causal=False)
-            a = a.contiguous().view(B, self.n_heads, L, self.head_dim)
-        else:
-            a = F.scaled_dot_product_attention(q, k, v, is_causal=False)
-
-        a = a.transpose(1, 2).contiguous().view(B, L, -1)
-        a = self.w_out(a)
-
-        x_b = x_b + a
-
-        a_norm = self.mlp_norm(x_b)
-        h_mlp = F.silu(self.w1(a_norm)) * self.w3(a_norm)
-        x_b = x_b + self.w2(h_mlp)
-
-        delta = self.w_up(self.zero_bridge(x_b))
-        return delta
-
-
-class MLPCarryBridge(nn.Module):
-    """Bottleneck MLP on carried hidden states h_t, then LayerNorm on d_model.
-
-    Same inner nonlinearity as the CrossAttentionBridge *post-attention* MLP
-    (SiLU-gated FFN in ``cab_bottleneck_dim`` / ``cab_mlp_expansion_dim``), but
-    without cross-attention: ``delta = LN(w_up(MLP(w_down(h_t))))``. Injected
-    at mask-token positions like Loopguard, ``inputs_embeds + delta``."""
-
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        d_model = config.hidden_size
-        d_b = getattr(config, "cab_bottleneck_dim", 128)
-        d_ff = getattr(config, "cab_mlp_expansion_dim", 512)
-        rms_eps = getattr(config, "rms_norm_eps", 1e-6)
-
-        self.w_down = nn.Linear(d_model, d_b, bias=False)
-        self.mlp_norm = CABRMSNorm(hidden_size=d_b)
-        self.w1 = nn.Linear(d_b, d_ff, bias=False)
-        self.w2 = nn.Linear(d_ff, d_b, bias=False)
-        self.w3 = nn.Linear(d_b, d_ff, bias=False)
-        self.w_up = nn.Linear(d_b, d_model, bias=False)
-        self.out_layer_norm = nn.LayerNorm(d_model, eps=rms_eps)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        std = getattr(self.config, "initializer_range", 0.02)
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, std=std)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-        nn.init.zeros_(self.out_layer_norm.weight)
-        if self.out_layer_norm.bias is not None:
-            nn.init.zeros_(self.out_layer_norm.bias)
-
-    def forward(self, h_t: torch.Tensor) -> torch.Tensor:
-        h_b = self.w_down(h_t)
-        a_norm = self.mlp_norm(h_b)
-        h_mlp = F.silu(self.w1(a_norm)) * self.w3(a_norm)
-        h_b = h_b + self.w2(h_mlp)
-        delta = self.w_up(h_b)
-        return self.out_layer_norm(delta)
-
-
 class Fast_dLLM_QwenPreTrainedModel(PreTrainedModel):
     config_class = Fast_dLLM_QwenConfig
     base_model_prefix = "model"
@@ -528,9 +368,6 @@ class Fast_dLLM_QwenPreTrainedModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
         elif isinstance(module, Fast_dLLM_QwenRMSNorm):
             module.weight.data.fill_(1.0)
-        elif isinstance(module, ZeroBridgeRMSNorm):
-            nn.init.zeros_(module.gamma)
-            nn.init.constant_(module.beta, 0.001)
 
 
 class Fast_dLLM_QwenRotaryEmbedding(nn.Module):
@@ -583,20 +420,13 @@ class Fast_dLLM_QwenModel(Fast_dLLM_QwenPreTrainedModel):
         self.rotary_emb = Fast_dLLM_QwenRotaryEmbedding(config=config)
         self.gradient_checkpointing = True
 
-        self.use_cab = getattr(config, "use_cab", False)
-        self.use_loopholing = getattr(config, "use_loopholing", False)
-        self.loophole_layer = getattr(config, "loophole_layer", -1)
-        self.loophole_position_guard = getattr(config, "loophole_position_guard", "mask")
-        self.use_mlp_carry = getattr(config, "use_mlp_carry", False)
-        if self.use_cab:
-            read_layers = getattr(config, "read_layers", [-1])
-            self.read_layers = [l if l >= 0 else config.num_hidden_layers + l for l in read_layers]
-            self.cab = CrossAttentionBridge(config)
-        if self.use_loopholing:
-            self.h_t_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
-            nn.init.zeros_(self.h_t_layer_norm.weight)
-        if self.use_mlp_carry:
-            self.mlp_carry = MLPCarryBridge(config)
+        self.use_relay = getattr(config, "use_relay", False)
+        self.relay_layer = getattr(config, "relay_layer", -1)
+        if self.use_relay:
+            # Zero-init weights so the first relay step is a near-identity
+            # injection: x ~= token_emb until the LayerNorm warms up.
+            self.relay_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.rms_norm_eps)
+            nn.init.zeros_(self.relay_layer_norm.weight)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -652,43 +482,23 @@ class Fast_dLLM_QwenModel(Fast_dLLM_QwenPreTrainedModel):
         carry_delta_raw_norm = None
         carry_delta_mask_norm = None
 
-        # --- Intervention injection (CAB, Loopholing, or MLP carry) ---
-        # Default position guard injects only at mask-token positions. For the
-        # all-position Loopguard ablation, Loopholing can instead inject at all
-        # mutable noisy-half training positions (labels != -100) and at all
-        # positions of the active decoding block. The doubled clean x0 half is
-        # still excluded.
-        if h_t is not None and (self.use_cab or self.use_loopholing or self.use_mlp_carry):
+        # --- Relay injection (paper Algorithm 1) ---
+        # Add LayerNorm(h_t) to token_emb at MASK positions only, leaving the
+        # clean (non-mask) context untouched. The mask-position guard ensures
+        # the carried state never overrides committed tokens.
+        if h_t is not None and self.use_relay:
             if input_ids is None:
                 raise ValueError(
-                    "CAB/Loopholing/MLP-carry intervention requires input_ids to "
-                    "position-guard the injection at mask-token positions; "
-                    "without it we cannot tell the noisy ``x_t`` half from "
-                    "the clean ``x0`` context and would silently corrupt the "
-                    "context. Pass input_ids alongside inputs_embeds, or set "
-                    "h_t=None."
+                    "Relay injection requires input_ids to position-guard the "
+                    "delta at mask-token positions; without it we cannot tell "
+                    "the noisy x_t half from the clean x0 context and would "
+                    "silently corrupt the context. Pass input_ids alongside "
+                    "inputs_embeds, or set h_t=None."
                 )
             mask_token_id = getattr(self.config, "mask_token_id", 151665)
             h_t_cast = h_t.to(inputs_embeds.dtype)
-            if self.use_cab:
-                delta = self.cab(inputs_embeds, h_t_cast)
-            elif self.use_mlp_carry:
-                delta = self.mlp_carry(h_t_cast)
-            else:
-                delta = self.h_t_layer_norm(h_t_cast)
-            guard_mode = getattr(self, "loophole_position_guard", "mask")
-            if self.use_loopholing and guard_mode == "mutable":
-                if self.training and labels is not None:
-                    mutable = labels != -100
-                    if input_ids.shape[1] == mutable.shape[1] * 2:
-                        clean_half = torch.zeros_like(mutable, dtype=torch.bool)
-                        guard = torch.cat([mutable, clean_half], dim=1).unsqueeze(-1)
-                    else:
-                        guard = mutable.unsqueeze(-1)
-                else:
-                    guard = torch.ones_like(input_ids, dtype=torch.bool).unsqueeze(-1)
-            else:
-                guard = (input_ids == mask_token_id).unsqueeze(-1)
+            delta = self.relay_layer_norm(h_t_cast)
+            guard = (input_ids == mask_token_id).unsqueeze(-1)
             with torch.no_grad():
                 denom = max(delta.shape[0], 1)
                 carry_delta_raw_norm = delta.detach().float().norm() / denom
@@ -735,19 +545,19 @@ class Fast_dLLM_QwenModel(Fast_dLLM_QwenPreTrainedModel):
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
-        read_layers_set = set(self.read_layers) if self.use_cab else set()
-        collected_h_s = {}
-        loophole_layer = int(getattr(self, "loophole_layer", -1))
-        loophole_layer_idx = None
-        if self.use_loopholing and loophole_layer != -1:
-            loophole_layer_idx = loophole_layer if loophole_layer >= 0 else self.config.num_hidden_layers + loophole_layer
-            if loophole_layer_idx < 0 or loophole_layer_idx >= self.config.num_hidden_layers:
+        # Resolve which decoder layer's output we expose as h_s for the next
+        # forward step. relay_layer == -1 (default) means the final layer.
+        relay_layer = int(getattr(self, "relay_layer", -1))
+        relay_layer_idx = None
+        if self.use_relay and relay_layer != -1:
+            relay_layer_idx = relay_layer if relay_layer >= 0 else self.config.num_hidden_layers + relay_layer
+            if relay_layer_idx < 0 or relay_layer_idx >= self.config.num_hidden_layers:
                 raise ValueError(
-                    f"loophole_layer={loophole_layer} resolves to invalid decoder "
-                    f"layer index {loophole_layer_idx}; model has "
+                    f"relay_layer={relay_layer} resolves to invalid decoder "
+                    f"layer index {relay_layer_idx}; model has "
                     f"{self.config.num_hidden_layers} layers"
                 )
-        loophole_h_s = None
+        relay_h_s = None
 
         for idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             hidden_states = decoder_layer(
@@ -764,33 +574,14 @@ class Fast_dLLM_QwenModel(Fast_dLLM_QwenPreTrainedModel):
                 replace_position=replace_position,
                 **kwargs,
             )
-            if idx in read_layers_set:
-                collected_h_s[idx] = hidden_states
-            if loophole_layer_idx is not None and idx == loophole_layer_idx:
-                loophole_h_s = hidden_states
+            if relay_layer_idx is not None and idx == relay_layer_idx:
+                relay_h_s = hidden_states
 
         hidden_states = self.norm(hidden_states)
 
         h_s = None
-        if self.use_cab:
-            last_layer_idx = self.config.num_hidden_layers - 1
-            h_s_list = []
-            for idx in self.read_layers:
-                if idx in collected_h_s:
-                    if idx == last_layer_idx:
-                        h_s_list.append(hidden_states)
-                    else:
-                        h_s_list.append(collected_h_s[idx])
-            if not h_s_list:
-                h_s = hidden_states
-            elif len(h_s_list) == 1:
-                h_s = h_s_list[0]
-            else:
-                h_s = torch.cat(h_s_list, dim=1)
-        elif self.use_loopholing:
-            h_s = loophole_h_s if loophole_layer_idx is not None else hidden_states
-        elif self.use_mlp_carry:
-            h_s = hidden_states
+        if self.use_relay:
+            h_s = relay_h_s if relay_layer_idx is not None else hidden_states
 
         return BaseModelOutputWithPastAndBlockCache(
             last_hidden_state=hidden_states,

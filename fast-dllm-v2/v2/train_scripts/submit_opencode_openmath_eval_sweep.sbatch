@@ -21,7 +21,7 @@
 #SBATCH --open-mode=append
 #SBATCH --output=logs/%x/%j.out
 #SBATCH --mail-type=FAIL
-#SBATCH --mail-user=brozonoyer_umass_edu
+#SBATCH --mail-user=$USER
 
 set -euo pipefail
 
@@ -33,7 +33,7 @@ fi
 cd "${REPO_ROOT}"
 
 CONDA_ENV=${CONDA_ENV:-venv_fastdllm}
-CONDA_ROOT=${CONDA_ROOT:-/work/pi_mccallum_umass_edu/brozonoyer_umass_edu/anaconda3}
+CONDA_ROOT=${CONDA_ROOT:-${HOME}/miniconda3}
 # shellcheck disable=SC1091
 source "${CONDA_ROOT}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
