@@ -59,13 +59,27 @@ config tree — leave it as is.
 
 ## Data
 
-The Sudoku Extreme split is downloaded from Hugging Face on first use
-(`brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver`). To prebuild
-the cache:
+Training and evaluation use a curated dataset that joins the Sudoku
+Extreme puzzles from [`sapientinc/sudoku-extreme`](https://huggingface.co/datasets/sapientinc/sudoku-extreme)
+with the deduction-step trajectories from
+[`timvink/sudoku-solver`](https://huggingface.co/datasets/timvink/sudoku-solver).
+The exact derived dataset that produces the Table 1 numbers will be
+released on the Hub upon paper acceptance; the Hub identifier is withheld
+during the double-blind review period.
+
+To use the dataset in this anonymized release, set the environment
+variable `RELAY_SUDOKU_HF_DATASET` to either (a) your own re-upload of the
+joined dataset, or (b) a local path to a `datasets`-loadable directory:
 
 ```bash
+export RELAY_SUDOKU_HF_DATASET=<your-hf-user>/sudoku-extreme-deduction
 xlm "job_type=prepare_data" "job_name=sudoku_extreme_prepare_data" "experiment=sudoku_extreme_mlm_uniform"
 ```
+
+Hydra configs (`relay/configs/datasets/sudoku_extreme_*.yaml`) read this
+variable via `oc.env` and fall back to the `<anonymous-hf-id>/...`
+placeholder if it is unset, which will cause the data loader to fail
+loudly at first use.
 
 ## Smoke test (no SLURM)
 
@@ -135,5 +149,9 @@ extreme-only filter sub-studies) are documented in
 
 ## W&B
 
-Reported runs live under `https://wandb.ai/<entity>/BPTT-sudoku`. The relevant
-filters are `+tags.sweep`, `+tags.objective`, `+tags.embed_tying`, `+tags.seed`.
+Reported runs live under `https://wandb.ai/<your-wandb-entity>/BPTT-sudoku`
+(the authors' entity is withheld for double-blind review). The relevant
+filters are `+tags.sweep`, `+tags.objective`, `+tags.embed_tying`,
+`+tags.seed`. Set `WANDB_ENTITY` in `.env` to point logging at your own
+entity, or pass `loggers.wandb=null` on the Hydra command line to disable
+logging entirely.

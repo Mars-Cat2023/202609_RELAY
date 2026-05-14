@@ -18,10 +18,12 @@ relay/
 
 The two subdirectories are intentionally independent: each ships its own Python environment, dataset preparation pipeline, training launcher, and evaluation pipeline. Pick the subdirectory that matches the experiments you want to reproduce.
 
-| Sub-project | Paper section | W&B project | Environment |
-|---|---|---|---|
-| [`sudoku/`](sudoku) | §4.1 (Table 1, Figure 2) | [`ilm-extensions/BPTT-sudoku`](https://wandb.ai/ilm-extensions/BPTT-sudoku) | `.venv_relay_sudoku` (`python -m venv`, Python 3.11.10) |
-| [`fast-dllm-v2/`](fast-dllm-v2) | §4.2 (Table 2, Figure 3) | [`ilm-extensions/Fast-dLLM-v2-evals`](https://wandb.ai/ilm-extensions/Fast-dLLM-v2-evals) | `lmflow` conda env (Python 3.10) |
+| Sub-project | Paper section | Environment |
+|---|---|---|
+| [`sudoku/`](sudoku) | §4.1 (Table 1, Figure 2) | `.venv_relay_sudoku` (`python -m venv`, Python 3.11.10) |
+| [`fast-dllm-v2/`](fast-dllm-v2) | §4.2 (Table 2, Figure 3) | `lmflow` conda env (Python 3.10) |
+
+> Both sub-projects log to Weights & Biases by default. Set `WANDB_ENTITY` to your own entity in each sub-project's `.env` (or pass `loggers.wandb=null` to the Sudoku launcher) to avoid logging anywhere; we omit the entity name here to preserve double-blind anonymity.
 
 ---
 
@@ -118,12 +120,7 @@ evalplus.evaluate --dataset humaneval --samples <jsonl-out>  # pinned to evalplu
 
 Cluster-specific knobs (`CONDA_ROOT`, `CONDA_ENV`, `RESERVATION`, partition, wall-clock) are picked up from environment variables; copy [`fast-dllm-v2/v2/.env.example`](fast-dllm-v2/v2/.env.example) to `.env` to set defaults. The kept sbatch wrappers (`train_scripts/*.sbatch`) all use `--mail-user=$USER` and `${HOME}/miniconda3` defaults so they require no edits to run on a different cluster.
 
-> **Released RELAY checkpoints.** The two adapted models that produce the **RELAY (sg)** and **RELAY** rows of Table 2 are uploaded to the Hub:
->
-> - [`brozonoyer/relay-fastdllm-v2-c40m60-relay-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-step200) — RELAY (full BPTT)
-> - [`brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200) — RELAY (sg)
->
-> Both ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `relay_layer_norm.{weight,bias}` tensor in the safetensors shard. Loading either with `AutoModelForCausalLM.from_pretrained(..., trust_remote_code=True)` from this repo's vendored `modeling.py` will instantiate the relay LayerNorm before `load_state_dict`, so all keys map cleanly. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline used to produce the Hub artifacts (it does **not** modify your on-disk training checkpoints).
+> **Released RELAY checkpoints.** The two adapted models that produce the **RELAY (sg)** and **RELAY** rows of Table 2 will be released on the Hugging Face Hub upon paper acceptance; the Hub identifiers are withheld during the double-blind review period to avoid deanonymization. Both checkpoints ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `relay_layer_norm.{weight,bias}` tensor in the safetensors shard, so loading either with `AutoModelForCausalLM.from_pretrained(..., trust_remote_code=True)` against this repo's vendored `modeling.py` instantiates the relay LayerNorm before `load_state_dict` and all keys map cleanly. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline used to produce the Hub artifacts (it does **not** modify your on-disk training checkpoints), so reviewers can reproduce the published artifacts from the locally trained Table 2 checkpoints.
 
 ---
 

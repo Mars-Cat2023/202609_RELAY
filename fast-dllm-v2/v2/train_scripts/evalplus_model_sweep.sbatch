@@ -120,7 +120,7 @@ for model_path in "${model_paths[@]}"; do
         --block_cache_mode "${EVALPLUS_BLOCK_CACHE}"
         --out_dir "${out_dir}"
         --wandb_project "${EVALPLUS_WANDB_PROJECT:-${WANDB_PROJECT:-huggingface}}"
-        --wandb_entity "${EVALPLUS_WANDB_ENTITY:-${WANDB_ENTITY:-ilm-extensions}}"
+        --wandb_entity "${EVALPLUS_WANDB_ENTITY:-${WANDB_ENTITY:-}}"
         --wandb_group "${EVALPLUS_WANDB_GROUP:-magicoder_full_evalplus_sweep}"
         --wandb_name "evalplus__${MODEL_LABEL}__${checkpoint_label}"
         --wandb_tags "evalplus,magicoder_oss,full,${MODEL_LABEL}"

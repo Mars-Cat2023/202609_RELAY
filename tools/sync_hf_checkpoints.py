@@ -18,14 +18,16 @@ we run them through this once before uploading.
 
 Usage::
 
-    # 1. Stage both reported checkpoints into ./hf_staging/
+    # 1. Stage both reported checkpoints into ./hf_staging/.
+    #    Replace the --src paths with your local Trainer ``checkpoint-200``
+    #    dirs from the OpenCode/OpenMath c40m60 RELAY and RELAY (sg) runs.
     python tools/sync_hf_checkpoints.py prepare \
-        --src /work/pi_mccallum_umass_edu/brozonoyer_umass_edu/Fast-dLLM/v2/output_models/opencode_openmath_60k_c40m60_1p5B/bptt_loopguard_puma_nopack2048_bs2x16x2_ep3_lr5e-6/checkpoint-200 \
+        --src /path/to/<run-dir>/checkpoint-200 \
         --dst hf_staging/relay-fastdllm-v2-c40m60-relay-step200 \
         --variant relay --step 200
 
     python tools/sync_hf_checkpoints.py prepare \
-        --src /work/pi_mccallum_umass_edu/brozonoyer_umass_edu/Fast-dLLM/v2/output_models/opencode_openmath_60k_c40m60_1p5B/bptt_loopguard_stopgrad_puma_nopack2048_bs2x16x2_ep3_lr5e-6/checkpoint-200 \
+        --src /path/to/<run-sg-dir>/checkpoint-200 \
         --dst hf_staging/relay-fastdllm-v2-c40m60-relay-sg-step200 \
         --variant relay-sg --step 200
 
@@ -36,7 +38,7 @@ Usage::
     # 3. Push to the Hub (requires ``huggingface-cli login`` first).
     python tools/sync_hf_checkpoints.py push \
         --staged hf_staging/relay-fastdllm-v2-c40m60-relay-step200 \
-        --repo brozonoyer/relay-fastdllm-v2-c40m60-relay-step200
+        --repo <your-hf-user>/relay-fastdllm-v2-c40m60-relay-step200
 
 The on-disk training checkpoints under ``--src`` are NEVER modified.
 """
@@ -123,6 +125,10 @@ def _write_model_card(staging_dir: Path, *, variant: str, step: int) -> None:
     pretty_variant = {"relay": "RELAY", "relay-sg": "RELAY (sg)"}.get(
         variant, variant
     )
+    # We deliberately do not embed the eventual Hub repo id in the card so
+    # the same staging dir can be uploaded under any user account; the card
+    # uses ``<this-repo>`` placeholders that the user can search-replace
+    # post-upload.
     card = f"""---
 license: apache-2.0
 language: en
@@ -138,15 +144,15 @@ base_model: Efficient-Large-Model/Fast_dLLM_v2_1.5B
 # {pretty_variant} adaptation of Fast-dLLM v2 1.5B (c40m60, step {step})
 
 Released alongside the paper *Learned Relay Representations for
-Forward-Thinking Discrete Diffusion Models* (NeurIPS 2026 submission).
-Reproduces the **{pretty_variant}** row of Table 2.
+Forward-Thinking Discrete Diffusion Models*. Reproduces the
+**{pretty_variant}** row of Table 2.
 
 ## Quick start
 
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-repo = "brozonoyer/relay-fastdllm-v2-c40m60-{variant}-step{step}"
+repo = "<this-repo>"  # e.g. <your-hf-user>/relay-fastdllm-v2-c40m60-{variant}-step{step}
 tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(repo, trust_remote_code=True)
 ```
@@ -173,8 +179,7 @@ USE_RELAY=1 BPTT_STOP_GRAD_H_S={int(variant == 'relay-sg')} \\
   sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch
 ```
 
-See the [public release of the training code](https://github.com/jacopo-minniti/relay)
-for the full pipeline.
+See the public release of the training code for the full pipeline.
 """
     (staging_dir / "README.md").write_text(card, encoding="utf-8")
 

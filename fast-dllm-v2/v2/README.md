@@ -58,17 +58,18 @@ parallel sub-block decoding, threshold-based unmasking) is untouched.
 
 - **Base checkpoint**:
   [`Efficient-Large-Model/Fast_dLLM_v2_1.5B`](https://huggingface.co/Efficient-Large-Model/Fast_dLLM_v2_1.5B)
-- **Released RELAY checkpoints** (post-trained from the base):
-  - [`brozonoyer/relay-fastdllm-v2-c40m60-relay-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-step200)
-  - [`brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200)
+- **Released RELAY checkpoints** (post-trained from the base): withheld
+  during double-blind review and to be released on the Hugging Face Hub
+  upon acceptance. Reviewers can reproduce them from the local Table 2
+  checkpoints with [`tools/sync_hf_checkpoints.py`](../../tools/sync_hf_checkpoints.py).
 - **Eval framework**: [EvalPlus](https://github.com/evalplus/evalplus) at
   the version pinned in [`requirements.txt`](requirements.txt)
   (`evalplus==<pinned>`). Threshold `0.85`, BD block 32, sub-block 8,
   reported on HumanEval / HumanEval+ / MBPP / MBPP+ exactly as in
   Wu et al. (2025b).
-- **W&B project**:
-  [`ilm-extensions/Fast-dLLM-v2-evals`](https://wandb.ai/ilm-extensions/Fast-dLLM-v2-evals)
-  hosts the eval runs whose Base/Plus/NFE numbers populate Table 2.
+- **W&B**: the eval runs whose Base/Plus/NFE numbers populate Table 2 are
+  hosted on a project under the authors' W&B entity; the entity name is
+  withheld during the double-blind review period.
 
 ## Citation
 

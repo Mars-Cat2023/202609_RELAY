@@ -4,8 +4,8 @@ defaults:
   - _self_
 
 _target_: xlm.datamodule.DatasetManager
-full_name: brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver/test
-full_name_debug: brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver/train
+full_name: ${oc.env:RELAY_SUDOKU_HF_DATASET,<anonymous-hf-id>/sudoku-extreme-deduction}/test
+full_name_debug: ${oc.env:RELAY_SUDOKU_HF_DATASET,<anonymous-hf-id>/sudoku-extreme-deduction}/train
 stages:
   - fit
   - validate

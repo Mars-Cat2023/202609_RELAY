@@ -6,11 +6,11 @@ Each input JSONL is produced by ``python -m relay.dump_decode_trajectories``
 (see :mod:`relay.dump_decode_trajectories`) and is keyed at *load*
 time by the SHA1 hash of the recovered puzzle question (taken from
 ``trajectory[0]``). All inputs are joined on ``puzzle_hash`` and merged with
-the Hugging Face dataset
-``brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver`` (configurable)
-to attach solver metadata: ``num_steps``, ``strategies_used``, ``rating``,
-``source``, the per-step solver ``trajectory`` (textual board states), and
-``answer``.
+a Hugging Face dataset that combines ``sapientinc/sudoku-extreme`` with
+``timvink/sudoku-solver`` (configurable via ``--hf-dataset`` or the
+``RELAY_SUDOKU_HF_DATASET`` env var) to attach solver metadata:
+``num_steps``, ``strategies_used``, ``rating``, ``source``, the per-step
+solver ``trajectory`` (textual board states), and ``answer``.
 
 Output schema (one row per (run, threshold τ, puzzle)):
 
@@ -36,7 +36,7 @@ Usage::
 
     python -m relay.n_way_pair_trajectories \\
       --manifest manifest.csv \\
-      --hf-dataset brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver \\
+      --hf-dataset $RELAY_SUDOKU_HF_DATASET \\
       --hf-split test \\
       --out outputs/sudoku_analysis.parquet
 
@@ -52,6 +52,7 @@ import argparse
 import csv
 import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -333,7 +334,16 @@ def main(argv: Optional[List[str]] = None) -> None:
     p.add_argument(
         "--hf-dataset",
         type=str,
-        default="brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver",
+        default=os.environ.get(
+            "RELAY_SUDOKU_HF_DATASET",
+            "<anonymous-hf-id>/sudoku-extreme-deduction",
+        ),
+        help=(
+            "HF dataset that joins sapientinc/sudoku-extreme with "
+            "timvink/sudoku-solver. Defaults to the value of "
+            "$RELAY_SUDOKU_HF_DATASET; the placeholder default will fail to "
+            "load and is intentional during the double-blind review period."
+        ),
     )
     p.add_argument("--hf-split", type=str, default="test")
     p.add_argument(

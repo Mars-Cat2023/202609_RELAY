@@ -1,9 +1,10 @@
 # Sudoku qualitative + quantitative analysis (8 ablations × 3 seeds)
 
 End-to-end workflow for the Sudoku results section: dump per-step decoding
-trajectories from each trained model, join them with the
-`brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver` HF dataset (which
-ships solver trajectories and strategy labels), compute algorithmic primitives
+trajectories from each trained model, join them with the curated HF dataset
+(env var `RELAY_SUDOKU_HF_DATASET`; built by combining
+`sapientinc/sudoku-extreme` with `timvink/sudoku-solver`, which together
+provide solver trajectories and strategy labels), compute algorithmic primitives
 (naked / hidden singles, fill-time grids, solver alignment) into a single
 parquet table, and produce the headline figures from a Jupyter notebook.
 
@@ -56,9 +57,11 @@ key in the F1/F4 aggregations.
 
 ## Models in scope
 
-The 24 seeded 300k-step Sudoku Extreme runs in `ilm-extensions/BPTT-sudoku`
-(4 objectives × 2 weight-tying × 3 random seeds). Each row maps to one log
-directory per seed: `logs/<base>_seed{1,2,3}/`.
+The 24 seeded 300k-step Sudoku Extreme runs (4 objectives × 2 weight-tying × 3
+random seeds). Each row maps to one log directory per seed:
+`logs/<base>_seed{1,2,3}/`. W&B project name shown in the paper is
+`<your-wandb-entity>/BPTT-sudoku`; the authors' entity is withheld during
+the double-blind review period.
 
 | key                         | objective tag                | embed_tying | base log dir                                                | seeds                    |
 |-----------------------------|------------------------------|-------------|-------------------------------------------------------------|--------------------------|
@@ -76,7 +79,7 @@ directory per seed: `logs/<base>_seed{1,2,3}/`.
 remain excluded.
 
 **Stability summary (val/prediction/exact_match @ τ=0.15, mean ± std over
-non-diverged seeds, from `wandb.ai/ilm-extensions/BPTT-sudoku`):**
+non-diverged seeds, from the authors' W&B project `<entity>/BPTT-sudoku`):**
 
 | objective                   | tied            | untied          |
 |-----------------------------|-----------------|-----------------|
@@ -124,8 +127,8 @@ Key environment variables (defaults in `[]`):
   `per_model_nfe_range` diagnostic verifies before running interpolation.
 - `LIMIT_VAL_BATCHES` `[2000]` — caps val-loader batches (with
   `per_device_batch_size=1`); the underlying dataset is the
-  `brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver/test` split
-  (422,786 puzzles), so 2000 is a small but representative slice.
+  `${RELAY_SUDOKU_HF_DATASET}/test` split (422,786 puzzles), so 2000 is
+  a small but representative slice.
 - `MAX_EXAMPLES` `[2000]` — caps written examples per `(run, seed, tau)`.
 - `SEED` `[1]` — shared *dataloader* seed across all dumps so `example_index`
   aligns and `--shared-only` keeps every puzzle. **Not** the model training
