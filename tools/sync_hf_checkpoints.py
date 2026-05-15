@@ -19,23 +19,25 @@ we run them through this once before uploading.
 Usage::
 
     # 1. Stage both reported checkpoints into ./hf_staging/.
-    #    Replace the --src paths with your local Trainer ``checkpoint-200``
-    #    dirs from the OpenCode/OpenMath c40m60 RELAY and RELAY (sg) runs.
+    #    Replace the --src paths with your local Trainer ``checkpoint-200`` dirs
+    #    and the --repo values with the Hub ids you intend to push to.
     python tools/sync_hf_checkpoints.py prepare \
         --src /path/to/<run-dir>/checkpoint-200 \
         --dst hf_staging/relay-fastdllm-v2-c40m60-relay-step200 \
-        --variant relay --step 200
+        --variant relay --step 200 \
+        --repo <your-hf-user>/relay-fastdllm-v2-c40m60-relay-step200
 
     python tools/sync_hf_checkpoints.py prepare \
         --src /path/to/<run-sg-dir>/checkpoint-200 \
         --dst hf_staging/relay-fastdllm-v2-c40m60-relay-sg-step200 \
-        --variant relay-sg --step 200
+        --variant relay-sg --step 200 \
+        --repo <your-hf-user>/relay-fastdllm-v2-c40m60-relay-sg-step200
 
     # 2. Smoke-test each staged dir (loads through the public modeling.py).
     python tools/sync_hf_checkpoints.py smoke \
         --staged hf_staging/relay-fastdllm-v2-c40m60-relay-step200
 
-    # 3. Push to the Hub (requires ``huggingface-cli login`` first).
+    # 3. Push to the Hub (requires ``hf auth login`` first). Same --repo as in step 1.
     python tools/sync_hf_checkpoints.py push \
         --staged hf_staging/relay-fastdllm-v2-c40m60-relay-step200 \
         --repo <your-hf-user>/relay-fastdllm-v2-c40m60-relay-step200
@@ -50,7 +52,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -121,14 +123,26 @@ def _copy_release_modeling(staging_dir: Path) -> None:
         shutil.copy2(src, staging_dir / fname)
 
 
-def _write_model_card(staging_dir: Path, *, variant: str, step: int) -> None:
+def _write_model_card(
+    staging_dir: Path, *, variant: str, step: int, repo_id: Optional[str] = None
+) -> None:
+    """Write the Hub model card for ``staging_dir``.
+
+    ``repo_id`` is the eventual Hub identifier (e.g.
+    ``<user>/relay-fastdllm-v2-c40m60-relay-step200``). When provided it is
+    used verbatim in the Quick start example so the card is self-contained;
+    otherwise we fall back to a generic placeholder so the staging dir can
+    still be uploaded under any account by post-editing the README.
+    """
     pretty_variant = {"relay": "RELAY", "relay-sg": "RELAY (sg)"}.get(
         variant, variant
     )
-    # We deliberately do not embed the eventual Hub repo id in the card so
-    # the same staging dir can be uploaded under any user account; the card
-    # uses ``<this-repo>`` placeholders that the user can search-replace
-    # post-upload.
+    quoted_repo = (
+        f'"{repo_id}"'
+        if repo_id is not None
+        else f'"<your-hf-user>/relay-fastdllm-v2-c40m60-{variant}-step{step}"'
+    )
+    eval_repo = repo_id or f"<your-hf-user>/relay-fastdllm-v2-c40m60-{variant}-step{step}"
     card = f"""---
 license: apache-2.0
 language: en
@@ -152,7 +166,7 @@ Forward-Thinking Discrete Diffusion Models*. Reproduces the
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-repo = "<this-repo>"  # e.g. <your-hf-user>/relay-fastdllm-v2-c40m60-{variant}-step{step}
+repo = {quoted_repo}
 tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(repo, trust_remote_code=True)
 ```
@@ -161,6 +175,32 @@ model = AutoModelForCausalLM.from_pretrained(repo, trust_remote_code=True)
 safetensors shard contains a `model.relay_layer_norm.{{weight,bias}}` tensor
 that the bundled `modeling.py` instantiates and consumes inside the
 2-step relay forward (paper Algorithm 1).
+
+## Reproduce the Table 2 numbers with EvalPlus
+
+From the public release of the training code (e.g. `relay/fast-dllm-v2/v2/`):
+
+```bash
+mkdir -p evalplus_results
+
+# HumanEval+
+python scripts/generate_evalplus_jsonl.py \\
+  --model_path {eval_repo} \\
+  --dataset humaneval --use_carry --threshold 0.85 \\
+  --output_jsonl evalplus_results/{variant}_humaneval.jsonl
+evalplus.evaluate --dataset humaneval --samples evalplus_results/{variant}_humaneval.jsonl
+
+# MBPP+
+python scripts/generate_evalplus_jsonl.py \\
+  --model_path {eval_repo} \\
+  --dataset mbpp --use_carry --threshold 0.85 \\
+  --output_jsonl evalplus_results/{variant}_mbpp.jsonl
+evalplus.evaluate --dataset mbpp --samples evalplus_results/{variant}_mbpp.jsonl
+```
+
+`--use_carry` enables the 2-step relay-state carry at inference; both
+checkpoints were trained with relay on, so it is required at eval to match
+the reported numbers.
 
 ## Training
 
@@ -243,8 +283,9 @@ def cmd_prepare(args: argparse.Namespace) -> None:
         f"(from {SRC_FAST_DLLM})"
     )
 
-    _write_model_card(dst, variant=args.variant, step=args.step)
-    print(f"[prepare] wrote README.md model card (variant={args.variant})")
+    _write_model_card(dst, variant=args.variant, step=args.step, repo_id=args.repo)
+    repo_note = f" (repo_id={args.repo})" if args.repo else " (placeholder repo_id)"
+    print(f"[prepare] wrote README.md model card (variant={args.variant}){repo_note}")
 
     print(f"[prepare] staging dir ready: {dst}")
     print(
@@ -323,6 +364,15 @@ def main() -> None:
     sp_prepare.add_argument("--dst", required=True, help="Destination staging dir.")
     sp_prepare.add_argument("--variant", required=True, choices=("relay", "relay-sg"))
     sp_prepare.add_argument("--step", type=int, required=True, help="Checkpoint step (for the model card).")
+    sp_prepare.add_argument(
+        "--repo",
+        default=None,
+        help=(
+            "Optional Hub repo id (e.g. <user>/relay-fastdllm-v2-c40m60-relay-step200) "
+            "to embed verbatim in the model card's Quick start example. Recommended "
+            "to set this so the staged README.md is self-contained."
+        ),
+    )
     sp_prepare.add_argument("--force", action="store_true", help="Overwrite an existing --dst.")
     sp_prepare.set_defaults(func=cmd_prepare)
 

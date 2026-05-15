@@ -58,10 +58,18 @@ parallel sub-block decoding, threshold-based unmasking) is untouched.
 
 - **Base checkpoint**:
   [`Efficient-Large-Model/Fast_dLLM_v2_1.5B`](https://huggingface.co/Efficient-Large-Model/Fast_dLLM_v2_1.5B)
-- **Released RELAY checkpoints** (post-trained from the base): withheld
-  during double-blind review and to be released on the Hugging Face Hub
-  upon acceptance. Reviewers can reproduce them from the local Table 2
-  checkpoints with [`tools/sync_hf_checkpoints.py`](../../tools/sync_hf_checkpoints.py).
+- **Released RELAY checkpoints** (post-trained from the base, 200 optimizer
+  steps on the c40m60 mixture):
+  - **RELAY**:
+    [`brozonoyer/relay-fastdllm-v2-c40m60-relay-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-step200)
+  - **RELAY (sg)**:
+    [`brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200)
+
+  Both repos bundle `auto_map`-wired `configuration.py` / `modeling.py`, so
+  `AutoModelForCausalLM.from_pretrained(repo, trust_remote_code=True)`
+  loads them directly. Reviewers can re-create the published artifacts
+  from any locally trained Table 2 checkpoint with
+  [`tools/sync_hf_checkpoints.py`](../../tools/sync_hf_checkpoints.py).
 - **Eval framework**: [EvalPlus](https://github.com/evalplus/evalplus) at
   the version pinned in [`requirements.txt`](requirements.txt)
   (`evalplus==<pinned>`). Threshold `0.85`, BD block 32, sub-block 8,

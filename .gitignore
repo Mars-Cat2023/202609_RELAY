@@ -32,3 +32,4 @@ __pycache__/
 # than from a sub-project).
 hf_home/
 hf_datasets_cache/
+hf_staging/

@@ -112,6 +112,7 @@ DRY_RUN=1 BLOCK_SIZE=512 NUM_TRAIN_EPOCHS=1 SAVE_STEPS=5 \
 bash scripts/launch_opencode_openmath_c40m60_4run.sh
 
 # 5. Evaluate any saved checkpoint with EvalPlus (HumanEval+ / MBPP+).
+#    --model_path accepts either a HF Hub id or a local Trainer checkpoint dir.
 python scripts/generate_evalplus_jsonl.py \
   --model_path output_models/opencode_openmath_60k_c40m60_1p5B/<run-dir>/checkpoint-200 \
   --dataset humaneval --threshold 0.85 --use_carry           # use --use_carry only for relay
@@ -120,7 +121,39 @@ evalplus.evaluate --dataset humaneval --samples <jsonl-out>  # pinned to evalplu
 
 Cluster-specific knobs (`CONDA_ROOT`, `CONDA_ENV`, `RESERVATION`, partition, wall-clock) are picked up from environment variables; copy [`fast-dllm-v2/v2/.env.example`](fast-dllm-v2/v2/.env.example) to `.env` to set defaults. The kept sbatch wrappers (`train_scripts/*.sbatch`) all use `--mail-user=$USER` and `${HOME}/miniconda3` defaults so they require no edits to run on a different cluster.
 
-> **Released RELAY checkpoints.** The two adapted models that produce the **RELAY (sg)** and **RELAY** rows of Table 2 will be released on the Hugging Face Hub upon paper acceptance; the Hub identifiers are withheld during the double-blind review period to avoid deanonymization. Both checkpoints ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `relay_layer_norm.{weight,bias}` tensor in the safetensors shard, so loading either with `AutoModelForCausalLM.from_pretrained(..., trust_remote_code=True)` against this repo's vendored `modeling.py` instantiates the relay LayerNorm before `load_state_dict` and all keys map cleanly. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline used to produce the Hub artifacts (it does **not** modify your on-disk training checkpoints), so reviewers can reproduce the published artifacts from the locally trained Table 2 checkpoints.
+#### Released RELAY checkpoints
+
+The two adapted models that produce the **RELAY** and **RELAY (sg)** rows of Table 2 are published on the Hugging Face Hub:
+
+| Row | Hub repo |
+|---|---|
+| **RELAY** | [`brozonoyer/relay-fastdllm-v2-c40m60-relay-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-step200) |
+| **RELAY (sg)** | [`brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200`](https://huggingface.co/brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200) |
+
+Both ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `model.relay_layer_norm.{weight,bias}` tensor in the safetensors shard, plus a self-contained `configuration.py` / `modeling.py` (`auto_map`-wired), so `trust_remote_code=True` is enough to load and run them — no checkout of this repo required for inference. The vendored `fast-dllm-v2/v2/src/lmflow/models/fast_dllm/{configuration,modeling}.py` here is identical to what each repo bundles, so you can also load them against the in-tree source.
+
+Reproduce the **RELAY** row of Table 2 directly from the Hub checkpoint (≈10 min on a single A100-80GB for HumanEval+; ≈25 min for MBPP+):
+
+```bash
+cd relay/fast-dllm-v2/v2
+mkdir -p evalplus_results
+
+# HumanEval+
+python scripts/generate_evalplus_jsonl.py \
+  --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-step200 \
+  --dataset humaneval --use_carry --threshold 0.85 \
+  --output_jsonl evalplus_results/relay_humaneval.jsonl
+evalplus.evaluate --dataset humaneval --samples evalplus_results/relay_humaneval.jsonl
+
+# MBPP+
+python scripts/generate_evalplus_jsonl.py \
+  --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-step200 \
+  --dataset mbpp --use_carry --threshold 0.85 \
+  --output_jsonl evalplus_results/relay_mbpp.jsonl
+evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_mbpp.jsonl
+```
+
+Swap in `…-relay-sg-step200` to reproduce the **RELAY (sg)** row. The `--use_carry` flag turns on the 2-step relay-state carry at inference time and matches the way the checkpoints were trained; omit it for vanilla-SFT runs. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline that produced these Hub artifacts (it does **not** modify your on-disk training checkpoints), so anyone can re-create the published artifacts from a locally trained Table 2 checkpoint.
 
 ---
 
