@@ -127,7 +127,10 @@ The two adapted models that produce the **RELAY** and **RELAY (sg)** rows of Tab
 
 Both ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `model.relay_layer_norm.{weight,bias}` tensor in the safetensors shard, plus a self-contained `configuration.py` / `modeling.py` (`auto_map`-wired), so `trust_remote_code=True` is enough to load and run them — no checkout of this repo required for inference. The vendored `fast-dllm-v2/v2/src/lmflow/models/fast_dllm/{configuration,modeling}.py` here is identical to what each repo bundles, so you can also load them against the in-tree source.
 
-Reproduce the **RELAY** row of Table 2 directly from the Hub checkpoint (≈10 min on a single A100-80GB for HumanEval+; ≈25 min for MBPP+):
+Table 2 EvalPlus numbers in the paper were produced with the same defaults as
+``Fast-dLLM/v2/scripts/submit_eval.py`` (``accelerate launch eval.py``): **`--max_new_tokens 2048`** and **`--batch_size 32`** (threshold **0.85**, BD block **32**, sub-block **8**). The standalone generator defaults to **`max_new_tokens=512`** for quicker smoke runs—that **lowers average NFE** because the masked-diffusion loop cannot allocate as many continuation blocks; see the comparison table below.
+
+Reproduce **RELAY** / **RELAY (sg)** from the Hub with **paper-aligned** decoding (add ``--nfe_stats_json`` for sidecar NFE JSON; absolute counts only):
 
 ```bash
 # From this repository root (the directory that contains ``fast-dllm-v2/`` and this README).
@@ -135,22 +138,58 @@ cd fast-dllm-v2/v2
 conda activate relay    # env where you ran ``pip install -e '.[eval]'``
 mkdir -p evalplus_results
 
-# HumanEval+
+MNT=2048
+BS=32
+
+# --- HumanEval+ --------------------------------------------------------------
 python scripts/generate_evalplus_jsonl.py \
   --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-step200 \
   --dataset humaneval --use_carry --threshold 0.85 \
-  --output_jsonl evalplus_results/relay_humaneval.jsonl \
-  && evalplus.evaluate --dataset humaneval --samples evalplus_results/relay_humaneval.jsonl
+  --max_new_tokens "${MNT}" --batch_size "${BS}" \
+  --output_jsonl evalplus_results/relay_humaneval_mnt"${MNT}"_bs"${BS}".jsonl \
+  --nfe_stats_json evalplus_results/relay_humaneval_mnt"${MNT}"_bs"${BS}"_nfe.json \
+  && evalplus.evaluate --dataset humaneval --samples evalplus_results/relay_humaneval_mnt"${MNT}"_bs"${BS}".jsonl
 
-# MBPP+
+python scripts/generate_evalplus_jsonl.py \
+  --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200 \
+  --dataset humaneval --use_carry --threshold 0.85 \
+  --max_new_tokens "${MNT}" --batch_size "${BS}" \
+  --output_jsonl evalplus_results/relay_sg_humaneval_mnt"${MNT}"_bs"${BS}".jsonl \
+  --nfe_stats_json evalplus_results/relay_sg_humaneval_mnt"${MNT}"_bs"${BS}"_nfe.json \
+  && evalplus.evaluate --dataset humaneval --samples evalplus_results/relay_sg_humaneval_mnt"${MNT}"_bs"${BS}".jsonl
+
+# --- MBPP+ -------------------------------------------------------------------
 python scripts/generate_evalplus_jsonl.py \
   --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-step200 \
   --dataset mbpp --use_carry --threshold 0.85 \
-  --output_jsonl evalplus_results/relay_mbpp.jsonl \
-  && evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_mbpp.jsonl
+  --max_new_tokens "${MNT}" --batch_size "${BS}" \
+  --output_jsonl evalplus_results/relay_mbpp_mnt"${MNT}"_bs"${BS}".jsonl \
+  --nfe_stats_json evalplus_results/relay_mbpp_mnt"${MNT}"_bs"${BS}"_nfe.json \
+  && evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_mbpp_mnt"${MNT}"_bs"${BS}".jsonl
+
+python scripts/generate_evalplus_jsonl.py \
+  --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-sg-step200 \
+  --dataset mbpp --use_carry --threshold 0.85 \
+  --max_new_tokens "${MNT}" --batch_size "${BS}" \
+  --output_jsonl evalplus_results/relay_sg_mbpp_mnt"${MNT}"_bs"${BS}".jsonl \
+  --nfe_stats_json evalplus_results/relay_sg_mbpp_mnt"${MNT}"_bs"${BS}"_nfe.json \
+  && evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_sg_mbpp_mnt"${MNT}"_bs"${BS}".jsonl
 ```
 
-Swap in `…-relay-sg-step200` for **RELAY (sg)**. Use `--use_carry` when evaluating relay checkpoints (omit for vanilla SFT).
+Compare ``avg_nfe`` in each ``*_nfe.json`` with Table 2. Omit ``--nfe_stats_json`` if you only need EvalPlus scores. Use ``--use_carry`` for these relay Hub checkpoints.
+
+##### Table 2 vs local ``max_new_tokens=512`` rerun (same Hub weights)
+
+Pass@1 is from ``evalplus.evaluate`` on the saved JSONL; NFE is ``avg_nfe`` from the sidecar JSON (generator **defaults**: ``max_new_tokens=512``, ``batch_size=4``). Paper column is the printed Table 2 (2048-token eval infra).
+
+| Method | | HumanEval Base↑ | HumanEval Plus↑ | HumanEval NFE↓ | MBPP Base↑ | MBPP Plus↑ | MBPP NFE↓ |
+|--------|---|-----------------|-----------------|----------------|------------|------------|-----------|
+| **Paper Table 2** | RELAY (sg) | 38.4% | 35.4% | 104.4 | 43.1% | 39.2% | 80.1 |
+| | **RELAY** | **42.1%** | **37.2%** | **88.3** | **46.6%** | **41.5%** | **78.8** |
+| **512 rerun** (this repo, ``evalplus_results/``) | RELAY (sg) | 41.5% | 37.8% | 82.3 | 42.6% | 38.4% | 69.6 |
+| | RELAY | 42.1% | 37.2% | 79.3 | 46.8% | 41.8% | 66.5 |
+
+Rerun with ``MNT=2048``, ``BS=32`` above to match paper NFE accounting; accuracies may still differ slightly from Table 2 due to EvalPlus / tokenizer revisions or GPU nondeterminism, but NFE should align with archived ``eval_results_nfe_v2`` runs.
 
 ---
 

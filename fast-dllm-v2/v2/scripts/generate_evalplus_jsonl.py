@@ -31,6 +31,13 @@ Score with EvalPlus (separate env with ``evalplus`` is fine; only the evaluate s
     evalplus.evaluate --dataset mbpp --samples evalplus_results/fastdllm_mbpp.jsonl
 
 Optional: ``--base_only`` on evaluate for HumanEval/MBPP *base* tests only.
+
+Optional: record **absolute** per-problem NFE (mean denoising forward passes per example, same
+definition as ``eval.py`` / Table 2 caption) into a sidecar JSON::
+
+    python scripts/generate_evalplus_jsonl.py ... \\
+        --output_jsonl evalplus_results/relay_humaneval.jsonl \\
+        --nfe_stats_json evalplus_results/relay_humaneval_nfe.json
 """
 
 from __future__ import annotations
@@ -374,7 +381,8 @@ def generate_batch(
     threshold: float,
     use_carry: bool,
     use_block_cache: bool,
-) -> List[str]:
+    return_nfe_stats: bool = False,
+) -> Tuple[List[str], Optional[List[int]]]:
     batched_input_ids = []
     max_len = 0
     min_len = 10**9
@@ -403,7 +411,7 @@ def generate_batch(
     batched = torch.cat(padded, dim=0)
     sl = torch.tensor(seq_lens, device=device)
 
-    generated_ids = model.mdm_sample(
+    raw = model.mdm_sample(
         batched,
         tokenizer=tokenizer,
         block_size=bd_size,
@@ -415,17 +423,25 @@ def generate_batch(
         use_block_cache=use_block_cache,
         threshold=threshold,
         use_carry=use_carry,
+        return_nfe_stats=return_nfe_stats,
     )
+    if return_nfe_stats:
+        finished_samples, nfe_pack = raw
+        nfes = [int(x) for x in nfe_pack["nfe"]]
+    else:
+        finished_samples = raw
+        nfes = None
 
     texts = []
     for i, s in enumerate(seq_lens):
+        row = finished_samples[i]
         texts.append(
             tokenizer.decode(
-                generated_ids[i][s:],
+                row[s:],
                 skip_special_tokens=True,
             )
         )
-    return texts
+    return texts, nfes
 
 
 def postprocess_raw(raw: str) -> str:
@@ -491,6 +507,15 @@ def main() -> None:
             "it off."
         ),
     )
+    ap.add_argument(
+        "--nfe_stats_json",
+        default="",
+        help=(
+            "If set, write a sidecar JSON with absolute per-task NFE counts "
+            "(active denoising forwards per problem; same counting as eval.py "
+            "batch_sample). Omits length-normalized metrics."
+        ),
+    )
     args = ap.parse_args()
 
     set_seed(args.seed)
@@ -528,6 +553,8 @@ def main() -> None:
     ordered_ids = natural_task_order(list(problems.keys()))
 
     solutions: Dict[str, str] = {}
+    nfe_by_task: Dict[str, int] = {}
+    record_nfe = bool(str(args.nfe_stats_json).strip())
     batch: List[str] = []
     batch_ids: List[str] = []
     batch_lens: List[int] = []
@@ -536,7 +563,7 @@ def main() -> None:
         nonlocal batch, batch_ids, batch_lens
         if not batch:
             return
-        texts = generate_batch(
+        texts, nfes = generate_batch(
             model,
             tokenizer,
             batch,
@@ -549,7 +576,15 @@ def main() -> None:
             args.threshold,
             use_carry,
             use_block_cache,
+            return_nfe_stats=record_nfe,
         )
+        if nfes is not None:
+            if len(nfes) != len(batch_ids):
+                raise RuntimeError(
+                    f"NFE list length {len(nfes)} != batch size {len(batch_ids)}"
+                )
+            for tid, n in zip(batch_ids, nfes):
+                nfe_by_task[tid] = int(n)
         for tid, raw in zip(batch_ids, texts):
             solutions[tid] = to_evalplus_solution(raw, problems[tid])
         batch, batch_ids, batch_lens = [], [], []
@@ -578,6 +613,44 @@ def main() -> None:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     print(f"Wrote {len(ordered_ids)} rows to {out_path}")
+
+    if record_nfe:
+        missing = [tid for tid in ordered_ids if tid not in nfe_by_task]
+        if missing:
+            raise RuntimeError(
+                f"Missing NFE for {len(missing)} tasks (e.g. {missing[:5]})"
+            )
+        per_sample = [nfe_by_task[tid] for tid in ordered_ids]
+        arr = np.asarray(per_sample, dtype=np.float64)
+        nfe_path = Path(str(args.nfe_stats_json).strip())
+        nfe_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "model_path": args.model_path,
+            "dataset": args.dataset,
+            "threshold": args.threshold,
+            "bd_size": args.bd_size,
+            "small_block_size": args.small_block_size,
+            "max_new_tokens": args.max_new_tokens,
+            "use_carry": use_carry,
+            "use_block_cache": use_block_cache,
+            "seed": args.seed,
+            "batch_size": args.batch_size,
+            "mask_id": args.mask_id,
+            "nfe_definition": (
+                "Per-example active denoising forward calls in batch_sample; excludes "
+                "prompt prefill and final cache-update next-token forwards."
+            ),
+            "task_ids": ordered_ids,
+            "per_sample_nfe": per_sample,
+            "total_samples": len(per_sample),
+            "avg_nfe": float(arr.mean()),
+            "median_nfe": float(np.median(arr)),
+            "min_nfe": int(arr.min()),
+            "max_nfe": int(arr.max()),
+        }
+        with nfe_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+        print(f"Wrote NFE stats to {nfe_path}")
 
 
 if __name__ == "__main__":
