@@ -68,15 +68,9 @@ python -m xlm.train \
 DO=print ./submit_sudoku_300k_sweep.sh         # dry run (prints sbatch args)
 ./submit_sudoku_300k_sweep.sh                  # 8 runs, single seed
 ./submit_sudoku_300k_seeds_sweep.sh            # 24 runs, seeds 1/2/3 (paper)
-
-# 4. Aggregate the per-seed runs into Table 1.
-#    See sudoku/SUDOKU_ANALYSIS_COMMANDS.md for the full pipeline.
-./submit_sudoku_qualitative_dumps.sh
-python -m relay.n_way_pair_trajectories ...
-python -m relay.summarize_sudoku_table_from_manifests --tau 0.15 ...
 ```
 
-Cluster-specific knobs (`SLURM_RESERVATION`, `SLURM_CONSTRAIN_MLM`, `SLURM_CONSTRAIN_RELAY`, partition, wall-clock) are picked up from environment variables, not hard-coded — so other SLURM-based clusters only need to override these to match local availability. See [`sudoku/SUDOKU_COMMANDS.md`](sudoku/SUDOKU_COMMANDS.md) for the full table.
+Cluster-specific knobs (`SLURM_RESERVATION`, `SLURM_CONSTRAIN_MLM`, `SLURM_CONSTRAIN_RELAY`, partition, wall-clock) are picked up from environment variables, not hard-coded — so other SLURM-based clusters only need to override these to match local availability. The Table 1 numbers (exact-match accuracy, token accuracy, mean NFE, legal rate) are the validation-set metrics logged each `val_check_interval` to W&B; see [`sudoku/SUDOKU_COMMANDS.md`](sudoku/SUDOKU_COMMANDS.md) for the full table and the metric-name list.
 
 ### Table 2 — Fast-dLLM v2 1.5B (`fast-dllm-v2/`)
 

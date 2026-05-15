@@ -13,10 +13,6 @@ dependencies = [
     "jaxtyping",
 ]
 
-[project.scripts]
-dump-decode-trajectories = "relay.dump_decode_trajectories:main"
-pair-trajectory-dumps = "relay.pair_trajectory_dumps:main"
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["relay*"]

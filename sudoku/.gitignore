@@ -23,4 +23,3 @@ hf_datasets_cache/
 **/*runs.json
 *.code-workspace
 temp.md
-visualization/outputs/*.jsonl

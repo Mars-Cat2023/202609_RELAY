@@ -79,13 +79,18 @@ Replace `experiment=sudoku_extreme_relay_bptt` with `sudoku_extreme_mlm_uniform`
 to smoke-test the baseline. See `submit_sudoku_300k_sweep.sh` for the full set
 of `loss.*` / `predictor.*` overrides that toggle between objectives.
 
-## Paper Table 1: aggregating numbers from W&B + qualitative dumps
+## Paper Table 1 numbers
 
-After all 24 (8 × 3 seeds) runs finish, follow `SUDOKU_ANALYSIS_COMMANDS.md`:
+After all 24 (8 × 3 seeds) runs finish, the per-step Table 1 numbers are
+the validation-set metrics logged to W&B (or to local TensorBoard logs).
+The relevant columns map to the metric keys logged every
+`val_check_interval`:
 
-1. `submit_sudoku_qualitative_dumps.sh` — dumps per-step decode trajectories at
-   a sweep of inference thresholds (skips the 2 diverged seeded runs by default).
-2. `python -m relay.n_way_pair_trajectories ...` — joins JSONLs with the HF
-   solver-trajectory dataset into a single parquet table.
-3. `python -m relay.summarize_sudoku_table_from_manifests --tau 0.15 ...` —
-   prints the matched-NFE Table 1 row from the manifest CSV.
+- **Exact-match accuracy** → `val/prediction/exact_match`
+- **Token accuracy** → `val/prediction/token_accuracy`
+- **Mean NFE** → `val/prediction/rollout_steps`
+- **Legal-rate** (Sudoku constraint check, used to flag divergence) →
+  `val/prediction/legal_rate`
+
+Group by the `+tags.{objective, embed_tying, seed}` tags to recover the
+eight rows × three seeds; average over seeds.

@@ -117,35 +117,22 @@ Cluster-specific knobs (`SLURM_RESERVATION`, `SLURM_CONSTRAIN_*`, partition,
 wall-clock) are environment variables; see [`SUDOKU_COMMANDS.md`](SUDOKU_COMMANDS.md)
 for the full table and the per-objective Hydra overrides.
 
-After training:
-
-1. `submit_sudoku_qualitative_dumps.sh` — dumps per-step decode trajectories
-   at a sweep of inference confidence thresholds. Drives Figure 4 and the
-   matched-NFE rows of Table 1.
-2. `python -m relay.n_way_pair_trajectories ...` — joins JSONL dumps with the
-   HF solver-trajectory dataset into a single parquet table.
-3. `python -m relay.summarize_sudoku_table_from_manifests --tau 0.15 ...` —
-   prints the matched-NFE Table 1 row from the manifest CSV.
-
-The exact, end-to-end commands (with the parquet schema, deduction-only and
-extreme-only filter sub-studies) are documented in
-[`SUDOKU_ANALYSIS_COMMANDS.md`](SUDOKU_ANALYSIS_COMMANDS.md).
+The Table 1 numbers (exact-match accuracy, token accuracy, mean NFE,
+legal rate) are the validation-set metrics logged every
+`val_check_interval` to W&B; see the metric-name list in
+[`SUDOKU_COMMANDS.md`](SUDOKU_COMMANDS.md).
 
 ## Layout
 
-| Path                                 | Contents                                                                                  |
-|--------------------------------------|-------------------------------------------------------------------------------------------|
-| `relay/`                             | The Sudoku training package (model, loss, predictor, datamodule, metrics, sudoku tools). |
-| `relay/configs/`                     | Hydra configs (`experiment/`, `model/`, `model_type/`, `datamodule/`, `metrics/`, ...).   |
-| `xlm-core/` (submodule)              | The XLM training harness used by every experiment.                                        |
-| `slurm_scripts/` (submodule)         | SLURM submission helpers used by the `submit_*.sh` wrappers.                              |
-| `submit_sudoku_300k_sweep.sh`        | Submits the 8 reported Sudoku runs (single seed).                                         |
-| `submit_sudoku_300k_seeds_sweep.sh`  | Same 8 ablations × N seeds.                                                              |
-| `submit_sudoku_qualitative_dumps.sh` | Dumps per-step decode trajectories from trained checkpoints.                              |
-| `visualization/`                     | Manual decode-trajectory dump pipeline + Jupyter viewer.                                  |
-| `plotting_scripts/`                  | Notebooks that produce the paper's Sudoku figures.                                        |
-| `SUDOKU_COMMANDS.md`                 | Per-objective Hydra overrides + sweep environment variables.                              |
-| `SUDOKU_ANALYSIS_COMMANDS.md`        | Full qualitative + quantitative analysis pipeline.                                        |
+| Path                                | Contents                                                                                  |
+|-------------------------------------|-------------------------------------------------------------------------------------------|
+| `relay/`                            | The Sudoku training package (model, loss, predictor, datamodule, metrics, sudoku tools). |
+| `relay/configs/`                    | Hydra configs (`experiment/`, `model/`, `model_type/`, `datamodule/`, `metrics/`, ...).   |
+| `xlm-core/` (submodule)             | The XLM training harness used by every experiment.                                        |
+| `slurm_scripts/` (submodule)        | SLURM submission helpers used by the `submit_*.sh` wrappers.                              |
+| `submit_sudoku_300k_sweep.sh`       | Submits the 8 reported Sudoku runs (single seed).                                         |
+| `submit_sudoku_300k_seeds_sweep.sh` | Same 8 ablations × N seeds.                                                              |
+| `SUDOKU_COMMANDS.md`                | Per-objective Hydra overrides + sweep environment variables.                              |
 
 ## W&B
 
