@@ -19,8 +19,7 @@ The fork is intentionally minimal: we only touch what RELAY needs.
 - **`src/lmflow/models/fast_dllm/`**
   - `configuration.py`: adds `use_relay` (bool, default `False`) and
     `relay_layer` (int, default `-1` = last decoder layer) to
-    `Fast_dLLM_QwenConfig`. Old `use_loopholing` / `loophole_layer` keys
-    from pre-release checkpoints are translated transparently.
+    `Fast_dLLM_QwenConfig`.
   - `modeling.py`: adds a single zero-init `nn.LayerNorm` named
     `relay_layer_norm` and an additive injection at mask-token positions
     only (`x = token_emb + relay_layer_norm(h_t)`, paper Algorithm 1
@@ -67,9 +66,8 @@ parallel sub-block decoding, threshold-based unmasking) is untouched.
 
   Both repos bundle `auto_map`-wired `configuration.py` / `modeling.py`, so
   `AutoModelForCausalLM.from_pretrained(repo, trust_remote_code=True)`
-  loads them directly. Reviewers can re-create the published artifacts
-  from any locally trained Table 2 checkpoint with
-  [`tools/sync_hf_checkpoints.py`](../../tools/sync_hf_checkpoints.py).
+  loads them directly with canonical RELAY config and weight keys—same as
+  fresh `checkpoint-*` dirs produced by training in this tree.
 - **Eval framework**: [EvalPlus](https://github.com/evalplus/evalplus) at
   the version pinned in [`requirements.txt`](requirements.txt)
   (`evalplus==<pinned>`). Threshold `0.85`, BD block 32, sub-block 8,

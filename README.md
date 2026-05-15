@@ -156,7 +156,7 @@ python scripts/generate_evalplus_jsonl.py \
   && evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_mbpp.jsonl
 ```
 
-Swap in `…-relay-sg-step200` to reproduce the **RELAY (sg)** row. The `--use_carry` flag turns on the 2-step relay-state carry at inference time and matches the way the checkpoints were trained; omit it for vanilla-SFT runs. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline that produced these Hub artifacts (it does **not** modify your on-disk training checkpoints), so anyone can re-create the published artifacts from a locally trained Table 2 checkpoint.
+Swap in `…-relay-sg-step200` for **RELAY (sg)**. Use `--use_carry` when evaluating relay checkpoints (omit for vanilla SFT).
 
 ---
 

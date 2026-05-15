@@ -33,3 +33,6 @@ __pycache__/
 hf_home/
 hf_datasets_cache/
 hf_staging/
+
+# Optional local checkpoint helper — not tracked (see maintainer checkout if needed).
+tools/sync_hf_checkpoints.py
