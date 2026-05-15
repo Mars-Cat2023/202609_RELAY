@@ -90,14 +90,15 @@ Each row is a 200-step adaptation of the off-the-shelf [`Efficient-Large-Model/F
 | **RELAY** | `--loss_type bptt --bptt_use_relay 1 --bptt_stop_grad_h_s 0` | `USE_RELAY=1 BPTT_STOP_GRAD_H_S=0 sbatch train_scripts/finetune_opencode_openmath_bptt.sbatch` |
 
 ```bash
-cd relay/fast-dllm-v2/v2
+# From this repository root (the directory that contains ``fast-dllm-v2/`` and this README).
+cd fast-dllm-v2/v2
 
 # 1. Environment (one-time). Defaults assume CONDA_ROOT=${HOME}/miniconda3
 #    and a conda env named "relay"; both are overridable via env vars.
 conda create -n relay python=3.10 pip ipykernel -y
 conda activate relay
-pip install -e .            # core training package
-pip install -e '.[eval]'    # adds the pinned EvalPlus version
+pip install -e '.[eval]'   # core LMFlow + pinned EvalPlus for Table 2 reproduce
+# Train-only (lighter deps): pip install -e .
 
 # 2. Build the c40m60 mixture (one-time, ~5 minutes; reads from the HF Hub).
 python scripts/prep_opencode_openmath_mix.py \
@@ -135,22 +136,24 @@ Both ship with `use_relay=True` / `relay_layer=-1` in `config.json` and a `model
 Reproduce the **RELAY** row of Table 2 directly from the Hub checkpoint (≈10 min on a single A100-80GB for HumanEval+; ≈25 min for MBPP+):
 
 ```bash
-cd relay/fast-dllm-v2/v2
+# From this repository root (the directory that contains ``fast-dllm-v2/`` and this README).
+cd fast-dllm-v2/v2
+conda activate relay    # env where you ran ``pip install -e '.[eval]'``
 mkdir -p evalplus_results
 
 # HumanEval+
 python scripts/generate_evalplus_jsonl.py \
   --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-step200 \
   --dataset humaneval --use_carry --threshold 0.85 \
-  --output_jsonl evalplus_results/relay_humaneval.jsonl
-evalplus.evaluate --dataset humaneval --samples evalplus_results/relay_humaneval.jsonl
+  --output_jsonl evalplus_results/relay_humaneval.jsonl \
+  && evalplus.evaluate --dataset humaneval --samples evalplus_results/relay_humaneval.jsonl
 
 # MBPP+
 python scripts/generate_evalplus_jsonl.py \
   --model_path brozonoyer/relay-fastdllm-v2-c40m60-relay-step200 \
   --dataset mbpp --use_carry --threshold 0.85 \
-  --output_jsonl evalplus_results/relay_mbpp.jsonl
-evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_mbpp.jsonl
+  --output_jsonl evalplus_results/relay_mbpp.jsonl \
+  && evalplus.evaluate --dataset mbpp --samples evalplus_results/relay_mbpp.jsonl
 ```
 
 Swap in `…-relay-sg-step200` to reproduce the **RELAY (sg)** row. The `--use_carry` flag turns on the 2-step relay-state carry at inference time and matches the way the checkpoints were trained; omit it for vanilla-SFT runs. See [`tools/sync_hf_checkpoints.py`](tools/sync_hf_checkpoints.py) for the staging-dir → upload pipeline that produced these Hub artifacts (it does **not** modify your on-disk training checkpoints), so anyone can re-create the published artifacts from a locally trained Table 2 checkpoint.

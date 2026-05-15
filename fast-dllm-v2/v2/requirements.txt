@@ -1,6 +1,9 @@
 packaging
 numpy
-datasets==2.14.6
+# EvalPlus 0.3.1 requires datasets>=2.21.0; upstream LMFlow pinned 2.14.6,
+# which made ``pip install -e '.[eval]'`` unsatisfiable. 2.21+ keeps HF loaders
+# used by prep/eval scripts compatible with transformers==4.53.1.
+datasets>=2.21.0,<3.0.0
 tokenizers>=0.13.3
 peft>=0.10.0
 torch>=2.0.1
@@ -16,10 +19,6 @@ accelerate>=0.27.2
 einops>=0.6.1
 pyarrow==18.0.0
 
-# --- Code evaluation (Table 2 of the paper) ---------------------------
-# EvalPlus pinned to the exact version used to compute the HumanEval+ /
-# MBPP+ numbers reported in Table 2. Installs the ``evalplus`` console
-# entrypoints used by ``scripts/generate_evalplus_jsonl.py`` and the
-# ``evalplus.evaluate`` post-processor. See
-# https://github.com/evalplus/evalplus for upstream changes.
-evalplus==0.3.1
+# EvalPlus is optional during training-only setups — install via:
+#   pip install -e '.[eval]'
+# so pip can satisfy EvalPlus's datasets constraint alongside core deps.

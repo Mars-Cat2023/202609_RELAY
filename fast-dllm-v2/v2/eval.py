@@ -44,7 +44,6 @@ import json
 import time
 import types
 import generation_functions
-import fast_dllm_eval_debug
 
 
 def _model_arg_bool(v) -> bool:
@@ -165,13 +164,8 @@ class Fast_dLLM_v2EvalHarness(LM):
                     "use_relay=False; falling back to single-pass."
                 )
 
-        fast_dllm_eval_debug.configure(
-            debug_print=_model_arg_bool(debug_print),
-            debug_print_prompt=_model_arg_bool(debug_print_prompt),
-            rank=self._rank,
-            world_size=self._world_size,
-            small_block_size=self.small_block_size,
-        )
+        self._debug_print_prompt = _model_arg_bool(debug_print_prompt)
+        _ = _model_arg_bool(debug_print)  # lm-eval may pass it; trajectory hook removed
 
     @property
     def rank(self):
@@ -458,7 +452,7 @@ class Fast_dLLM_v2EvalHarness(LM):
                 # put result in the correct original index position
                 output[orig_idx] = generated_answer
 
-                if fast_dllm_eval_debug.DEBUG_PRINT_PROMPT:
+                if self._debug_print_prompt:
                     print('=' * 20)
                     print('question: ', req.args[0])
                     print('answer: ', generated_answer)

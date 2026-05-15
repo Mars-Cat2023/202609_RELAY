@@ -3,8 +3,6 @@ import torch
 import types
 from transformers.utils import auto_docstring, logging
 
-import fast_dllm_eval_debug
-
 # Constants for Fast_dLLM model
 FAST_DLLM_MASK_ID = 151665
 FAST_DLLM_STOP_TOKEN = 151645
@@ -91,14 +89,6 @@ class Fast_dLLM_QwenForCausalLM:
                     next_token[finished_flag] = tokenizer.pad_token_id
                     x_t = torch.cat([x_t, next_token], dim=1)
                     step += 1
-                    fast_dllm_eval_debug.print_trajectory_step(
-                        x_t=x_t,
-                        seq_len=seq_len,
-                        tokenizer=tokenizer,
-                        mask_id=mask_id,
-                        block_idx=block_idx,
-                        inner_step=step,
-                    )
 
                     break
                 
@@ -170,14 +160,6 @@ class Fast_dLLM_QwenForCausalLM:
                             nfe_counts[active_nfe_idx] += 1
 
                         step += 1
-                        fast_dllm_eval_debug.print_trajectory_step(
-                            x_t=x_t,
-                            seq_len=seq_len,
-                            tokenizer=tokenizer,
-                            mask_id=mask_id,
-                            block_idx=block_idx,
-                            inner_step=step,
-                        )
 
             if input_ids.shape[1] ==  x_t.shape[1]:
                 input_ids = x_t

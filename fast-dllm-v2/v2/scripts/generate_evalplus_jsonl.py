@@ -59,7 +59,8 @@ try:
     from evalplus.sanitize import sanitize
 except ImportError as e:
     raise SystemExit(
-        "evalplus is required for datasets + sanitize. Install with: pip install evalplus\n"
+        "evalplus is required for datasets + sanitize. From fast-dllm-v2/v2 run: "
+        "pip install -e '.[eval]'\n"
         f"Original error: {e}"
     ) from e
 

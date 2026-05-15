@@ -20,9 +20,8 @@ extra_require = {
     "vllm": ["vllm>=0.4.3"],
     "ray": ["ray>=2.22.0"],
     "flash_attn": ["flash-attn>=2.0.2"],
-    # EvalPlus pinned to the exact version that produced the HumanEval+ /
-    # MBPP+ numbers in Table 2 of the RELAY paper. Kept as a separate extra
-    # so users who only train (not eval) need not pull it in.
+    # EvalPlus pinned for Table 2 HumanEval+/MBPP+. Requires datasets>=2.21
+    # (satisfied by core requirements.txt); keep evalplus out of install_requires.
     "eval": ["evalplus==0.3.1"],
 }
 
