@@ -36,3 +36,6 @@ hf_staging/
 
 # Optional local checkpoint helper — not tracked (see maintainer checkout if needed).
 tools/sync_hf_checkpoints.py
+
+# Local anonymized manuscript / camera-ready drafts (keep on disk only).
+309_Learned_Relay_Representati.pdf
