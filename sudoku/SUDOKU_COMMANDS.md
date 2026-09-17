@@ -12,39 +12,23 @@ The four objectives map directly to Table 1 of the paper:
 
 Each objective is run in two weight-tying conditions (`+tags.embed_tying=tied`
 adds `++model.tie_embeddings=true`; `untied` is the default), giving the eight
-runs of Table 1.
+runs of Table 1. The paper averages seeds `1`, `2`, `3`.
 
-## Batch submission (recommended)
+Shared Hydra knobs on every Table 1 command (all launched via the `xlm`
+console script with `job_type=train` and a unique `job_name`):
 
-```bash
-DO=print  ./submit_sudoku_300k_sweep.sh        # dry-run, prints sbatch arguments
-./submit_sudoku_300k_sweep.sh                  # submit the eight runs (single seed)
+```
+++trainer.precision=bf16-mixed
+trainer.max_steps=300000
+trainer.val_check_interval=5000
+per_device_batch_size=512
+global_batch_size=512
+seed=<1|2|3>
 ```
 
-To run the same eight ablations across multiple seeds (paper uses seeds 1, 2, 3):
-
-```bash
-DO=print ./submit_sudoku_300k_seeds_sweep.sh   # dry-run all 24 jobs
-./submit_sudoku_300k_seeds_sweep.sh            # submit all 24 jobs
-```
-
-Both scripts read cluster-specific knobs from environment variables:
-
-| Variable                | Default              | Purpose                                                            |
-|-------------------------|----------------------|--------------------------------------------------------------------|
-| `DO`                    | `submit`             | `print` for dry-run; `submit` actually `sbatch`'es                  |
-| `SLURM_RESERVATION`     | (unset)              | If set, adds `++slurm.reservation=$VAL`                             |
-| `SLURM_CONSTRAIN_MLM`   | `vram40,bf16`        | GPU constraint for the MLM-uniform job                              |
-| `SLURM_CONSTRAIN_RELAY` | `vram80,bf16`        | GPU constraint for the rollout / relay_sg / relay jobs              |
-| `TRAIN_MAX_STEPS`       | `300000`             | Total training steps                                                |
-| `TRAIN_VAL_INTERVAL`    | `5000`               | Validation interval                                                 |
-| `BATCH_SIZE`            | `512`                | Per-device batch size                                               |
-| `SLURM_TIME`            | `36:00:00`           | Wall-clock limit                                                    |
-| `TAG_SWEEP`             | `sudoku_extreme_300k`| W&B `sweep=…` tag for filtering                                     |
-| `SEEDS`                 | `1 2 3`              | (seeds sweep only) whitespace-separated seed list                   |
-| `ONLY_OBJECTIVES`       | (all four)           | (seeds sweep only) filter to a subset                               |
-| `ONLY_TYINGS`           | (`untied tied`)      | (seeds sweep only) filter weight-tying conditions                   |
-| `SKIP_EXISTING_LOGDIR`  | `0`                  | (seeds sweep only) skip jobs whose `logs/<job_name>/` already exists|
+Relay-family jobs used 80GB-class GPUs at batch 512; drop both batch-size
+flags together if VRAM is smaller. Full copy-paste commands are in
+[`README.md`](README.md).
 
 ## Validation metrics (logged every `val_check_interval`)
 
@@ -55,17 +39,17 @@ Both scripts read cluster-specific knobs from environment variables:
 - `val_sweep/t_{0p05,0p10,0p15,0p20,0p25}/{exact_match, token_accuracy, rollout_steps, legal_rate}` — same metrics computed at five inference confidence thresholds.
 - The same suite is also reported under `test/prediction/*`.
 
-## Quick local smoke test (no SLURM, single GPU)
+## Smoke test (single GPU)
 
-The same code runs without the SLURM wrapper. Reduce steps to confirm the
-loop is wired up before launching the full 300k:
+Reduce steps to confirm the loop is wired up before launching the full 300k:
 
 ```bash
 cd relay/sudoku
 source .venv_relay/bin/activate
 export PROJECT_ROOT="$PWD"
 
-python -m xlm.train \
+xlm job_type=train \
+  job_name=sudoku_extreme_smoke \
   experiment=sudoku_extreme_relay_bptt \
   trainer.max_steps=200 \
   trainer.val_check_interval=100 \
@@ -76,8 +60,7 @@ python -m xlm.train \
 ```
 
 Replace `experiment=sudoku_extreme_relay_bptt` with `sudoku_extreme_mlm_uniform`
-to smoke-test the baseline. See `submit_sudoku_300k_sweep.sh` for the full set
-of `loss.*` / `predictor.*` overrides that toggle between objectives.
+to smoke-test the baseline.
 
 ## Paper Table 1 numbers
 

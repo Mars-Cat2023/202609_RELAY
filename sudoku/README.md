@@ -8,87 +8,75 @@ Relay-sg.
 ## Setup
 
 ```bash
-git clone --recurse-submodules <repo-url>
+git clone --recurse-submodules https://github.com/jacopo-minniti/relay.git
 cd relay/sudoku
 ```
 
-Submodules:
-
-- `xlm-core` — the XLM training harness (Hydra + PyTorch Lightning) used by
-  every experiment YAML.
-- `slurm_scripts` — SLURM submission helpers used by the `submit_*.sh` wrappers.
-
-To pull updates and keep submodules in sync:
+If you already cloned without submodules:
 
 ```bash
-git pull --recurse-submodules
-git submodule update --remote xlm-core
+git submodule update --init --recursive
 ```
+
+`xlm-core` is a submodule pinned to `ec2563c` (the SHA used for the paper
+runs). It tracks `branch = main`. Do **not** run
+`git submodule update --remote` on a first-time checkout — that floats past
+the pinned SHA. Use it only when you intentionally want a newer harness.
 
 ### Python environment
 
-Create a virtual environment and install everything in editable mode:
+Python 3.11. Create a virtual environment and install in this order:
 
 ```bash
-python -m venv .venv_relay
+python3.11 -m venv .venv_relay
 source .venv_relay/bin/activate
+# install a CUDA wheel first if `pip` would otherwise pull a CPU torch
 pip install -e xlm-core
 pip install -e xlm-core/xlm-models
 pip install -e .
+cp .env.example .env
 ```
 
-Then create a `.env` file at the `relay/sudoku/` root (used by Hydra +
-`xlm-core`):
+Edit `.env` and set `WANDB_ENTITY` to your entity, or pass
+`loggers.wandb=null` on the Hydra command line to disable logging.
 
-```bash
-WANDB_ENTITY=<your-wandb-entity>
-WANDB_PROJECT=BPTT-sudoku
-DATA_DIR=data
-HF_HOME=hf_home
-HF_DATASETS_CACHE=hf_datasets_cache
-LOG_DIR=logs
-TOKENIZERS_PARALLELISM=false
-PROJECT_ROOT=.
-HYDRA_FULL_ERROR=1
-OC_CAUSE=1
-TORCHDYNAMO_CAPTURE_SCALAR_OUTPUTS=1
-```
-
-`xlm_models.json` at this directory tells Hydra where to find the `relay/`
-config tree — leave it as is.
+`.env` lives at `relay/sudoku/` — the `xlm` console script loads it from
+the current working directory. `PROJECT_ROOT=.` is required so Hydra finds
+`xlm_models.json` (`{"relay": "relay"}`).
 
 ## Data
 
-Training and evaluation use a curated dataset that joins the Sudoku
-Extreme puzzles from [`sapientinc/sudoku-extreme`](https://huggingface.co/datasets/sapientinc/sudoku-extreme)
-with the deduction-step trajectories from
-[`timvink/sudoku-solver`](https://huggingface.co/datasets/timvink/sudoku-solver).
-The exact derived dataset that produces the Table 1 numbers will be
-released on the Hub upon paper acceptance; the Hub identifier is withheld
-during the double-blind review period.
+Training and evaluation use
+[`brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver`](https://huggingface.co/datasets/brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver)
+(train / test). First train downloads it into `HF_HOME` /
+`HF_DATASETS_CACHE`. No separate `prepare_data` step is required.
 
-To use the dataset in this anonymized release, set the environment
-variable `RELAY_SUDOKU_HF_DATASET` to either (a) your own re-upload of the
-joined dataset, or (b) a local path to a `datasets`-loadable directory:
+To point at a different Hub repo or a local `datasets`-loadable directory:
 
 ```bash
 export RELAY_SUDOKU_HF_DATASET=<your-hf-user>/sudoku-extreme-deduction
-xlm "job_type=prepare_data" "job_name=sudoku_extreme_prepare_data" "experiment=sudoku_extreme_mlm_uniform"
 ```
 
 Hydra configs (`relay/configs/datasets/sudoku_extreme_*.yaml`) read this
-variable via `oc.env` and fall back to the `<anonymous-hf-id>/...`
-placeholder if it is unset, which will cause the data loader to fail
-loudly at first use.
+variable via `oc.env` and fall back to the paper Hub id if it is unset.
 
-## Smoke test (no SLURM)
-
-A single-GPU sanity run to confirm the loop is wired up before launching the
-full 300k training:
+Optional on-disk cache (not needed for Table 1):
 
 ```bash
 export PROJECT_ROOT="$PWD"
-python -m xlm.train \
+xlm "job_type=prepare_data" "job_name=sudoku_extreme_prepare_data" "experiment=sudoku_extreme_mlm_uniform"
+```
+
+## Smoke test
+
+A single-GPU sanity run to confirm the loop is wired up before launching the
+full 300k training. All training goes through the `xlm` console script
+(installed by `pip install -e xlm-core`; `python -m xlm` is equivalent):
+
+```bash
+export PROJECT_ROOT="$PWD"
+xlm job_type=train \
+  job_name=sudoku_extreme_smoke \
   experiment=sudoku_extreme_relay_bptt \
   trainer.max_steps=200 \
   trainer.val_check_interval=100 \
@@ -102,20 +90,94 @@ Substitute `experiment=sudoku_extreme_mlm_uniform` for the baseline.
 
 ## Reproducing Table 1
 
+Shared knobs from the paper: 300k steps, val every 5k, batch 512, bf16-mixed,
+lr `5e-4`, warmup 2000, inference threshold `0.15`. Relay-family jobs used
+80GB-class GPUs at batch 512; drop `per_device_batch_size` and
+`global_batch_size` together if VRAM is smaller. The paper averages seeds
+`1`, `2`, `3` and both tying conditions (eight cells × three seeds).
+
+`job_name` sets the log directory (`$LOG_DIR/<job_name>/`) and the W&B run
+name, so keep it unique per run.
+
 ```bash
-# Dry-run first to inspect the SLURM submission for your cluster.
-DO=print ./submit_sudoku_300k_sweep.sh
+export PROJECT_ROOT="$PWD"
+SEED=1   # paper averages seeds 1, 2, 3
 
-# Submit the eight reported runs (single seed; ~36h on 80GB GPUs for relay).
-./submit_sudoku_300k_sweep.sh
+# Mask-uniform CE
+xlm job_type=train \
+  job_name=sudoku_extreme_mlm_uniform_300k_untied_seed$SEED \
+  experiment=sudoku_extreme_mlm_uniform \
+  seed=$SEED \
+  ++trainer.precision=bf16-mixed \
+  trainer.max_steps=300000 \
+  trainer.val_check_interval=5000 \
+  per_device_batch_size=512 \
+  global_batch_size=512 \
+  +tags.sweep=sudoku_extreme_300k \
+  +tags.embed_tying=untied \
+  +tags.objective=mlm_uniform \
+  +tags.seed=$SEED
 
-# Multi-seed sweep (paper averages over seeds 1, 2, 3 -> 24 runs).
-./submit_sudoku_300k_seeds_sweep.sh
+# Rollout-buffer-only
+xlm job_type=train \
+  job_name=sudoku_extreme_rollout_300k_untied_seed$SEED \
+  experiment=sudoku_extreme_relay_bptt \
+  seed=$SEED \
+  model=rotary_transformer_xtiny \
+  loss.with_relay=false \
+  loss.stop_grad_h_s=true \
+  predictor.with_relay=false \
+  ++trainer.precision=bf16-mixed \
+  trainer.max_steps=300000 \
+  trainer.val_check_interval=5000 \
+  per_device_batch_size=512 \
+  global_batch_size=512 \
+  +tags.sweep=sudoku_extreme_300k \
+  +tags.embed_tying=untied \
+  +tags.objective=rollout \
+  +tags.seed=$SEED
+
+# Relay-sg
+xlm job_type=train \
+  job_name=sudoku_extreme_relay_sg_300k_untied_seed$SEED \
+  experiment=sudoku_extreme_relay_bptt \
+  seed=$SEED \
+  loss.with_relay=true \
+  loss.stop_grad_h_s=true \
+  predictor.with_relay=true \
+  ++trainer.precision=bf16-mixed \
+  trainer.max_steps=300000 \
+  trainer.val_check_interval=5000 \
+  per_device_batch_size=512 \
+  global_batch_size=512 \
+  +tags.sweep=sudoku_extreme_300k \
+  +tags.embed_tying=untied \
+  +tags.objective=relay_sg \
+  +tags.seed=$SEED
+
+# Relay (BPTT, T=2)
+xlm job_type=train \
+  job_name=sudoku_extreme_relay_bptt_steps2_300k_untied_seed$SEED \
+  experiment=sudoku_extreme_relay_bptt \
+  seed=$SEED \
+  loss.with_relay=true \
+  loss.stop_grad_h_s=false \
+  loss.num_steps=2 \
+  predictor.with_relay=true \
+  ++trainer.precision=bf16-mixed \
+  trainer.max_steps=300000 \
+  trainer.val_check_interval=5000 \
+  per_device_batch_size=512 \
+  global_batch_size=512 \
+  +tags.sweep=sudoku_extreme_300k \
+  +tags.embed_tying=untied \
+  +tags.objective=relay \
+  +tags.seed=$SEED
 ```
 
-Cluster-specific knobs (`SLURM_RESERVATION`, `SLURM_CONSTRAIN_*`, partition,
-wall-clock) are environment variables; see [`SUDOKU_COMMANDS.md`](SUDOKU_COMMANDS.md)
-for the full table and the per-objective Hydra overrides.
+For the tied vocab condition add `++model.tie_embeddings=true` and
+`+tags.embed_tying=tied` (and swap `_untied` for `_tied` in `job_name`).
+Pass `loggers.wandb=null` to skip W&B.
 
 The Table 1 numbers (exact-match accuracy, token accuracy, mean NFE,
 legal rate) are the validation-set metrics logged every
@@ -124,21 +186,16 @@ legal rate) are the validation-set metrics logged every
 
 ## Layout
 
-| Path                                | Contents                                                                                  |
-|-------------------------------------|-------------------------------------------------------------------------------------------|
-| `relay/`                            | The Sudoku training package (model, loss, predictor, datamodule, metrics, sudoku tools). |
-| `relay/configs/`                    | Hydra configs (`experiment/`, `model/`, `model_type/`, `datamodule/`, `metrics/`, ...).   |
-| `xlm-core/` (submodule)             | The XLM training harness used by every experiment.                                        |
-| `slurm_scripts/` (submodule)        | SLURM submission helpers used by the `submit_*.sh` wrappers.                              |
-| `submit_sudoku_300k_sweep.sh`       | Submits the 8 reported Sudoku runs (single seed).                                         |
-| `submit_sudoku_300k_seeds_sweep.sh` | Same 8 ablations × N seeds.                                                              |
-| `SUDOKU_COMMANDS.md`                | Per-objective Hydra overrides + sweep environment variables.                              |
+| Path                 | Contents                                                                                  |
+|----------------------|-------------------------------------------------------------------------------------------|
+| `relay/`             | The Sudoku training package (model, loss, predictor, datamodule, metrics, sudoku tools). |
+| `relay/configs/`     | Hydra configs (`experiment/`, `model/`, `model_type/`, `datamodule/`, `metrics/`, ...).   |
+| `xlm-core/`          | Submodule: the XLM training harness used by every experiment.                             |
+| `SUDOKU_COMMANDS.md` | Per-objective Hydra overrides and validation metric names.                                |
 
 ## W&B
 
-Reported runs live under `https://wandb.ai/<your-wandb-entity>/BPTT-sudoku`
-(the authors' entity is withheld for double-blind review). The relevant
-filters are `+tags.sweep`, `+tags.objective`, `+tags.embed_tying`,
-`+tags.seed`. Set `WANDB_ENTITY` in `.env` to point logging at your own
-entity, or pass `loggers.wandb=null` on the Hydra command line to disable
-logging entirely.
+Reported runs live under `https://wandb.ai/<your-wandb-entity>/BPTT-sudoku`.
+The relevant filters are `+tags.sweep`, `+tags.objective`,
+`+tags.embed_tying`, `+tags.seed`. Set `WANDB_ENTITY` in `.env`, or pass
+`loggers.wandb=null` on the Hydra command line to disable logging entirely.

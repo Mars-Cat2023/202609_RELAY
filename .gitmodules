@@ -2,6 +2,3 @@
 	path = sudoku/xlm-core
 	url = https://github.com/dhruvdcoder/xlm-core.git
 	branch = main
-[submodule "sudoku/slurm_scripts"]
-	path = sudoku/slurm_scripts
-	url = https://github.com/dhruvdcoder/slurm_scripts.git

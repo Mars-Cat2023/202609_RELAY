@@ -23,7 +23,7 @@ The two subdirectories are intentionally independent: each ships its own Python 
 | [`sudoku/`](sudoku) | §4.1 (Table 1, Figure 2) | `.venv_relay` venv (`python -m venv`, Python 3.11.10) |
 | [`fast-dllm-v2/`](fast-dllm-v2) | §4.2 (Table 2, Figure 3) | `relay` conda env (Python 3.10) |
 
-> Both sub-projects log to Weights & Biases by default. Set `WANDB_ENTITY` to your own entity in each sub-project's `.env` (or pass `loggers.wandb=null` to the Sudoku launcher) to avoid logging anywhere; we omit the entity name here to preserve double-blind anonymity.
+> Both sub-projects log to Weights & Biases by default. Set `WANDB_ENTITY` to your own entity in each sub-project's `.env` (or pass `loggers.wandb=null` to the Sudoku launcher) to log to your account or disable logging.
 
 ---
 
@@ -43,19 +43,24 @@ Each row is one training objective × one weight-tying condition. The four objec
 Each of the four objectives is run in two weight-tying conditions (`tied` and `untied`), giving the eight rows of Table 1; the paper averages over three training seeds.
 
 ```bash
+git clone --recurse-submodules https://github.com/jacopo-minniti/relay.git
 cd relay/sudoku
+# if you already cloned without submodules:
+#   git submodule update --init --recursive
 
-# 1. Environment + .env setup (one-time)
-#    See sudoku/README.md for the full requirements list.
-python -m venv .venv_relay
+# 1. Environment + .env setup (one-time). See sudoku/README.md for details.
+python3.11 -m venv .venv_relay
 source .venv_relay/bin/activate
+# install a CUDA wheel first if `pip` would otherwise pull a CPU torch
 pip install -e xlm-core
 pip install -e xlm-core/xlm-models
 pip install -e .
+cp .env.example .env   # set WANDB_ENTITY (or pass loggers.wandb=null)
 
-# 2. Quick local smoke test (no SLURM, single GPU, 200 steps)
+# 2. Quick smoke test (single GPU, 200 steps)
 export PROJECT_ROOT="$PWD"
-python -m xlm.train \
+xlm job_type=train \
+  job_name=sudoku_extreme_smoke \
   experiment=sudoku_extreme_relay_bptt \
   trainer.max_steps=200 \
   trainer.val_check_interval=100 \
@@ -64,13 +69,12 @@ python -m xlm.train \
   global_batch_size=8 \
   loggers.wandb=null
 
-# 3. Reproduce Table 1 on a SLURM cluster.
-DO=print ./submit_sudoku_300k_sweep.sh         # dry run (prints sbatch args)
-./submit_sudoku_300k_sweep.sh                  # 8 runs, single seed
-./submit_sudoku_300k_seeds_sweep.sh            # 24 runs, seeds 1/2/3 (paper)
+# 3. Reproduce Table 1 — one `xlm job_type=train` command per objective.
+#    Full commands (Mask-uniform / Rollout / Relay-sg / Relay, plus tied
+#    and seeds 1/2/3) are in sudoku/README.md.
 ```
 
-Cluster-specific knobs (`SLURM_RESERVATION`, `SLURM_CONSTRAIN_MLM`, `SLURM_CONSTRAIN_RELAY`, partition, wall-clock) are picked up from environment variables, not hard-coded — so other SLURM-based clusters only need to override these to match local availability. The Table 1 numbers (exact-match accuracy, token accuracy, mean NFE, legal rate) are the validation-set metrics logged each `val_check_interval` to W&B; see [`sudoku/SUDOKU_COMMANDS.md`](sudoku/SUDOKU_COMMANDS.md) for the full table and the metric-name list.
+The first train downloads [`brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver`](https://huggingface.co/datasets/brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver) (no separate `prepare_data` step). The Table 1 numbers (exact-match accuracy, token accuracy, mean NFE, legal rate) are the validation-set metrics logged each `val_check_interval` to W&B; see [`sudoku/README.md`](sudoku/README.md) and [`sudoku/SUDOKU_COMMANDS.md`](sudoku/SUDOKU_COMMANDS.md).
 
 ### Table 2 — Fast-dLLM v2 1.5B (`fast-dllm-v2/`)
 
