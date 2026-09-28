@@ -1,0 +1,104 @@
+{
+  "arguments": {
+    "checkpoint": "logs/sudoku_extreme_relay_bptt_steps2_300k_tied_seed1/checkpoints/40-300000.ckpt",
+    "data": "/nvme-data2/qilong/202609_RELAY/data/brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver/test",
+    "output": "logs/inference_hidden_temperature/pilot_20260928",
+    "weights": "ema",
+    "device": "cuda:2",
+    "precision": "bf16",
+    "n": 128,
+    "start": 0,
+    "samples": 8,
+    "batch_size": 128,
+    "max_steps": 64,
+    "threshold": 0.15,
+    "seed": 20260928,
+    "temperatures": [
+      0.5,
+      2.0
+    ],
+    "sigmas": [
+      0.5,
+      2.0,
+      5.0
+    ],
+    "smoke_only": false
+  },
+  "checkpoint_sha256": "c1b72a5b18bf124f1851cdc52a84f5e6dc1f2eecd6aac3e4f52e8108868be9b4",
+  "model": {
+    "global_step": 300000,
+    "model": {
+      "num_embeddings": 17,
+      "d_model": 384,
+      "num_layers": 4,
+      "nhead": 6,
+      "padding_idx": 0,
+      "mask_idx": 2,
+      "dim_feedforward": 1536,
+      "dropout": 0.1,
+      "activation": "relu",
+      "layer_norm_eps": 1e-05,
+      "rotary_emb_dim": 64,
+      "max_length": 85,
+      "force_flash_attn": false,
+      "final_layer_without_normalization": false,
+      "tie_embeddings": true
+    },
+    "weights": "ema",
+    "parameters": 7099776
+  },
+  "data": {
+    "path": "/nvme-data2/qilong/202609_RELAY/data/brozonoyer/sapientinc-sudoku-extreme-timvink-sudoku-solver/test",
+    "available_rows": 422786,
+    "fingerprint": "c9fd2c8965d66861",
+    "start": 0,
+    "n": 128,
+    "cohort": "unfiltered",
+    "order": "saved Hugging Face dataset order; no shuffle",
+    "subset_sha256": "3db88a43ae40c3a950a55f35b06cc9605f43075489c7cb6ad031edcb25f4cc7d"
+  },
+  "configurations": [
+    [
+      "baseline",
+      1.0,
+      0.0
+    ],
+    [
+      "temperature_0.5",
+      0.5,
+      0.0
+    ],
+    [
+      "temperature_2",
+      2.0,
+      0.0
+    ],
+    [
+      "hidden_sigma_0.5",
+      1.0,
+      0.5
+    ],
+    [
+      "hidden_sigma_2",
+      1.0,
+      2.0
+    ],
+    [
+      "hidden_sigma_5",
+      1.0,
+      5.0
+    ]
+  ],
+  "torch_version": "2.7.1+cu126",
+  "gpu": "NVIDIA A100 80GB PCIe",
+  "source_hashes": {
+    "sudoku/experiments/hidden_noise_temperature/run.py": "d078db431587058605d772e9ba4632227d657bd519fdd56601ec7ef1d0e030ae",
+    "sudoku/relay/inference_perturbation.py": "deb99848cca39e8926d3ed38240aa669eb48439e9a83f854c84c8ab5b29a93c1",
+    "sudoku/relay/predictor.py": "de9635ea71b97b8d1f72c4c59249007cc2306dda98f1229a46445bf8be4aba56",
+    "sudoku/relay/model.py": "4a202b088e4278b9b152ad3f4ac1bf0267edf69b732f56badcbc547a266c79c8"
+  },
+  "nfe_definition": "Actual model forwards per batch row, including forwards on finished rows and the original unconditional final forward. Eight actual runs per puzzle, without caching deterministic repeats.",
+  "noise_seed_definition": "seed + sample_id*1000003 + batch_start; same streams across sigma values; changing batching changes streams",
+  "selection": "Original cumulative uncertainty < 0.15 with highest-confidence fallback; top-1 over full vocabulary; no digit-only masking",
+  "status": "complete"
+}

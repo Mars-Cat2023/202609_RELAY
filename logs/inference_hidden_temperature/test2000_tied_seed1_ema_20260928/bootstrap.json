@@ -1,0 +1,410 @@
+{
+  "method": "Paired percentile bootstrap resampling puzzles with all eight outcomes kept together; conditional on this checkpoint and observed rollouts; pointwise intervals, no multiple-comparison correction.",
+  "seed": 20260928,
+  "replicates": 2000,
+  "results": [
+    {
+      "configuration": "baseline",
+      "avg_at_8": {
+        "estimate": 67.0,
+        "ci95": [
+          64.95,
+          69.05
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 67.0,
+        "ci95": [
+          64.95,
+          69.05
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "configuration": "temperature_0.5",
+      "avg_at_8": {
+        "estimate": 22.2,
+        "ci95": [
+          20.39875,
+          23.95
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 22.2,
+        "ci95": [
+          20.39875,
+          23.95
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -44.800000000000004,
+        "ci95": [
+          -47.15125,
+          -42.65
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -44.800000000000004,
+        "ci95": [
+          -47.15125,
+          -42.65
+        ]
+      }
+    },
+    {
+      "configuration": "temperature_0.75",
+      "avg_at_8": {
+        "estimate": 52.1,
+        "ci95": [
+          50.0,
+          54.25124999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 52.1,
+        "ci95": [
+          50.0,
+          54.25124999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -14.899999999999999,
+        "ci95": [
+          -16.7,
+          -13.200000000000001
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -14.899999999999999,
+        "ci95": [
+          -16.7,
+          -13.200000000000001
+        ]
+      }
+    },
+    {
+      "configuration": "temperature_1.25",
+      "avg_at_8": {
+        "estimate": 73.7,
+        "ci95": [
+          71.85000000000001,
+          75.64999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 73.7,
+        "ci95": [
+          71.85000000000001,
+          75.64999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": 6.7,
+        "ci95": [
+          5.5,
+          8.05
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 6.7,
+        "ci95": [
+          5.5,
+          8.05
+        ]
+      }
+    },
+    {
+      "configuration": "temperature_1.5",
+      "avg_at_8": {
+        "estimate": 76.9,
+        "ci95": [
+          75.1,
+          78.75
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 76.9,
+        "ci95": [
+          75.1,
+          78.75
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": 9.9,
+        "ci95": [
+          8.450000000000001,
+          11.450000000000001
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 9.9,
+        "ci95": [
+          8.450000000000001,
+          11.450000000000001
+        ]
+      }
+    },
+    {
+      "configuration": "temperature_2",
+      "avg_at_8": {
+        "estimate": 82.55,
+        "ci95": [
+          80.85,
+          84.2
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 82.55,
+        "ci95": [
+          80.85,
+          84.2
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": 15.55,
+        "ci95": [
+          13.65,
+          17.4
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 15.55,
+        "ci95": [
+          13.65,
+          17.4
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_0.05",
+      "avg_at_8": {
+        "estimate": 66.925,
+        "ci95": [
+          64.94359374999999,
+          68.91890624999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 68.05,
+        "ci95": [
+          66.05,
+          70.05
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.075,
+        "ci95": [
+          -0.42500000000000004,
+          0.27499999999999997
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 1.05,
+        "ci95": [
+          0.6,
+          1.55
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_0.1",
+      "avg_at_8": {
+        "estimate": 66.94375000000001,
+        "ci95": [
+          64.9375,
+          68.95078125
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 68.4,
+        "ci95": [
+          66.4,
+          70.39999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.056249999999999994,
+        "ci95": [
+          -0.40625,
+          0.3
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 1.4000000000000001,
+        "ci95": [
+          0.8999999999999999,
+          1.95
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_0.2",
+      "avg_at_8": {
+        "estimate": 66.9,
+        "ci95": [
+          64.89359375,
+          68.91265625
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 69.05,
+        "ci95": [
+          67.10000000000001,
+          71.05125
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.1,
+        "ci95": [
+          -0.5,
+          0.3001562499999991
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 2.0500000000000003,
+        "ci95": [
+          1.4000000000000001,
+          2.7
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_0.5",
+      "avg_at_8": {
+        "estimate": 66.77499999999999,
+        "ci95": [
+          64.79375,
+          68.7628125
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 71.35000000000001,
+        "ci95": [
+          69.45,
+          73.45
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.22499999999999998,
+        "ci95": [
+          -0.7251562500000001,
+          0.2875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 4.35,
+        "ci95": [
+          3.5000000000000004,
+          5.25
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_1",
+      "avg_at_8": {
+        "estimate": 66.6375,
+        "ci95": [
+          64.71234374999999,
+          68.58203125
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 73.15,
+        "ci95": [
+          71.3,
+          75.10125
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.36250000000000004,
+        "ci95": [
+          -1.05,
+          0.3125
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 6.15,
+        "ci95": [
+          5.1,
+          7.1499999999999995
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_2",
+      "avg_at_8": {
+        "estimate": 66.31875000000001,
+        "ci95": [
+          64.424375,
+          68.31968749999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 75.7,
+        "ci95": [
+          73.9,
+          77.60125000000001
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.68125,
+        "ci95": [
+          -1.5189062500000001,
+          0.09390624999999915
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 8.7,
+        "ci95": [
+          7.449999999999999,
+          9.9
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_sigma_5",
+      "avg_at_8": {
+        "estimate": 61.481249999999996,
+        "ci95": [
+          59.76828125,
+          63.25625
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 79.05,
+        "ci95": [
+          77.3,
+          80.80000000000001
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -5.51875,
+        "ci95": [
+          -6.71890625,
+          -4.443593750000001
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 12.049999999999999,
+        "ci95": [
+          10.6,
+          13.5
+        ]
+      }
+    }
+  ]
+}

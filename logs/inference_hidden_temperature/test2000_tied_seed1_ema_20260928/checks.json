@@ -1,0 +1,9 @@
+{
+  "baseline_trajectory_matches_original": true,
+  "deterministic_repeat_matches": true,
+  "noise_seed_reproducible": true,
+  "first_step_unaffected_by_hidden_noise": true,
+  "clues_preserved": true,
+  "first_step_hidden_rms": 15.913285255432129,
+  "first_step_hidden_centered_rms": 15.903993606567383
+}
