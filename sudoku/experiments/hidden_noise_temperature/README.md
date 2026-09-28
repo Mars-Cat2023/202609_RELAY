@@ -81,3 +81,23 @@ A process is complete only when the manifest status is `complete`; partially wri
 ## Interpretation limits
 
 These rollouts measure task-level performance and compute. Similar accuracy does not prove Gaussian hidden noise is temperature scaling. Temperature at a fixed value remains deterministic; hidden noise may improve pass@8 through diversity. An additional fixed-state distribution-matching experiment (fit T against noise-averaged next-step probabilities, then evaluate residual KL and token-rank changes on held-out states) is needed to directly quantify distributional approximation. That experiment is not implemented by this rollout runner.
+
+## Additional group: fixed confidence T=0
+
+`--noise-temperature 0` uses the exact limit as T approaches zero from above, rather than dividing logits by zero or substituting an arbitrary tiny positive temperature. Confidence is 1 for a unique maximum logit, and 1/m for m exactly tied maximum logits. Top-1 token selection is unchanged. Ties are assessed in the same forward precision as the other experiments (BF16 autocast), so finite-precision ties are retained.
+
+At T=0, uniquely confident masked positions have zero uncertainty cost and can all be revealed on the first step. Noise added to the outgoing hidden does not affect this first token update. Consequently, the hidden-noise intervention may have very little opportunity to change the result. `first_step_remaining_masks` (per rollout) and `first_step_filled_rate` (aggregate percent) measure this directly.
+
+```bash
+/data/qilong/miniconda3/envs/relay-sudoku/bin/python \
+  sudoku/experiments/hidden_noise_temperature/run.py \
+  --checkpoint logs/sudoku_extreme_relay_bptt_steps2_300k_tied_seed1/checkpoints/40-300000.ckpt \
+  --output logs/inference_hidden_temperature/test2000_T0_tied_seed1_ema_20260928 \
+  --n 2000 --batch-size 512 --device cuda:2 \
+  --temperatures --noise-temperature 0 \
+  --sigmas 0 0.05 0.1 0.2 0.5 1 2 5
+```
+
+This also reruns the original T=1, sigma=0 baseline as a regression control. The T=0, sigma=0 result is a separate control within the new group. Eight attempts are actually executed for each of the nine configurations. All other checkpoint, dataset, seed, precision, batching and decoding settings match the preceding experiment.
+
+Original results remain in `logs/inference_hidden_temperature/test2000_tied_seed1_ema_20260928`. The previous source versions and a checksum inventory of all original result files were preserved under `logs/inference_hidden_temperature/archive_before_T0_20260928` before adding T=0 support. Plot generation in `analyze.py` requires matplotlib; the numerical audit/report can run without it.

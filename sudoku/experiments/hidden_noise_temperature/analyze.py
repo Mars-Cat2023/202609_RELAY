@@ -68,6 +68,7 @@ def main():
         f"- Dataset: {n} unfiltered test puzzles, saved dataset indices {start}–{start+n-1}, no shuffle. All {samples} attempts were actually evaluated for every configuration.",
         f"- Precision: {args_saved['precision']}; batch size: {args_saved['batch_size']}; confidence threshold: {args_saved['threshold']}; max ordinary steps: {args_saved['max_steps']}.",
         "- Top-1 token selection and the original decoder are retained. Hidden noise affects the next forward, not the current logits. No training is performed.", "",
+        "- T=0, when requested, means the exact softmax T->0+ limit, with uniform probability on tied maxima.",
         "## Results", "", (out / "summary.md").read_text().strip(), "",
         "NFE counts actual forwards per row, including work on already finished rows and the unconditional final forward. It depends on batch composition. `summary.csv` also reports first-filled steps. NFE / 8 counts the total budget across eight attempts.", "",
         "## Differences from baseline", "",
@@ -81,6 +82,13 @@ def main():
         "This is an exploratory sweep on one checkpoint, with all settings reported. The intervals condition on that checkpoint and these eight rollouts, and are not corrected for multiple comparisons. A best observed setting is not a validated optimum. Shared GPU wall times are not clean speed benchmarks.", "",
         "Task metrics alone do not establish distributional equivalence to temperature scaling. A fixed-state next-step probability matching experiment with held-out evaluation of residual KL and rank changes is still needed to quantify that approximation directly.", "",
         "## Audit", "", "Original baseline trajectory equivalence, repeat determinism, seeded noise reproducibility, first-step timing and clue preservation passed. All per-attempt exact-match labels and aggregate avg@8, pass@8 and NFE values were independently recomputed from saved predictions. See checks.json, manifest.json and bootstrap.json."]
+    if all("first_step_filled_rate" in s for s in summaries):
+        lines += ["", "## First-step completion", "",
+            "This diagnostic measures where outgoing hidden noise can still affect future token decisions.", "",
+            "| Configuration | Filled after first step (%) | Mean first-filled step | Mixed-reward groups (%) |",
+            "|---|---:|---:|---:|"]
+        for s in summaries:
+            lines.append(f"| {s['configuration']} | {s['first_step_filled_rate']:.2f} | {s['mean_first_filled_step']:.3f} | {s['mixed_reward_group_rate']:.2f} |")
     (out / "report.md").write_text("\n".join(lines)+"\n")
     try:
         import matplotlib
@@ -88,8 +96,9 @@ def main():
         import matplotlib.pyplot as plt
         fig,axes = plt.subplots(1,2,figsize=(11,4),constrained_layout=True)
         baseline_s = summaries[0]
-        for ax,field,title in zip(axes,["temperature","sigma"],["A: confidence temperature","B: hidden Gaussian noise"]):
-            group = [baseline_s] + [s for s in summaries[1:] if (s["sigma"] == 0 if field == "temperature" else s["sigma"] > 0)]
+        noise_temperature = manifest["arguments"].get("noise_temperature", 1.0)
+        for ax,field,title in zip(axes,["temperature","sigma"],["No hidden noise",f"Hidden Gaussian noise (T={noise_temperature:g})"]):
+            group = [s for s in summaries if (s["sigma"] == 0 if field == "temperature" else s["temperature"] == noise_temperature)]
             group.sort(key=lambda s:s[field])
             x = [s[field] for s in group]
             ax.plot(x,[s["avg_at_8"] for s in group],"o-",label="avg@8")

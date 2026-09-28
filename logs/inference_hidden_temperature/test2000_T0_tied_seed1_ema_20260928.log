@@ -1,0 +1,46 @@
+CHECKS {"zero_temperature_limit_and_ties": true, "baseline_trajectory_matches_original": true, "deterministic_repeat_matches": true, "noise_seed_reproducible": true, "first_step_unaffected_by_hidden_noise": true, "clues_preserved": true, "first_step_hidden_rms": 15.913285255432129, "first_step_hidden_centered_rms": 15.903993606567383}
+baseline: 512/2000 puzzles x 8; elapsed 7.8s
+baseline: 1024/2000 puzzles x 8; elapsed 13.8s
+baseline: 1536/2000 puzzles x 8; elapsed 21.1s
+baseline: 2000/2000 puzzles x 8; elapsed 27.2s
+RESULT {"configuration": "baseline", "temperature": 1.0, "sigma": 0.0, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 67.0, "pass_at_8": 67.0, "mean_nfe": 22.512, "mean_nfe_per_8": 180.096, "mean_first_filled_step": 6.3335, "first_step_filled_rate": 0.05, "unfilled_rate": 0.0, "legal_rate": 67.0, "mean_distinct_answers": 1.0, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 27.217716970015317}
+hidden_T0_sigma_0: 512/2000 puzzles x 8; elapsed 1.3s
+hidden_T0_sigma_0: 1024/2000 puzzles x 8; elapsed 2.5s
+hidden_T0_sigma_0: 1536/2000 puzzles x 8; elapsed 3.8s
+hidden_T0_sigma_0: 2000/2000 puzzles x 8; elapsed 5.2s
+RESULT {"configuration": "hidden_T0_sigma_0", "temperature": 0.0, "sigma": 0.0, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.232, "mean_nfe_per_8": 25.856, "mean_first_filled_step": 1.5035, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.0, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 5.22431714006234}
+hidden_T0_sigma_0.05: 512/2000 puzzles x 8; elapsed 1.2s
+hidden_T0_sigma_0.05: 1024/2000 puzzles x 8; elapsed 2.5s
+hidden_T0_sigma_0.05: 1536/2000 puzzles x 8; elapsed 3.8s
+hidden_T0_sigma_0.05: 2000/2000 puzzles x 8; elapsed 5.3s
+RESULT {"configuration": "hidden_T0_sigma_0.05", "temperature": 0.0, "sigma": 0.05, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.145, "mean_nfe_per_8": 25.16, "mean_first_filled_step": 1.5033125, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.0035, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 5.2571302119176835}
+hidden_T0_sigma_0.1: 512/2000 puzzles x 8; elapsed 1.3s
+hidden_T0_sigma_0.1: 1024/2000 puzzles x 8; elapsed 2.7s
+hidden_T0_sigma_0.1: 1536/2000 puzzles x 8; elapsed 3.9s
+hidden_T0_sigma_0.1: 2000/2000 puzzles x 8; elapsed 5.1s
+RESULT {"configuration": "hidden_T0_sigma_0.1", "temperature": 0.0, "sigma": 0.1, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.119, "mean_nfe_per_8": 24.952, "mean_first_filled_step": 1.50325, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.0045, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 5.124201302998699}
+hidden_T0_sigma_0.2: 512/2000 puzzles x 8; elapsed 1.3s
+hidden_T0_sigma_0.2: 1024/2000 puzzles x 8; elapsed 2.6s
+hidden_T0_sigma_0.2: 1536/2000 puzzles x 8; elapsed 3.9s
+hidden_T0_sigma_0.2: 2000/2000 puzzles x 8; elapsed 5.3s
+RESULT {"configuration": "hidden_T0_sigma_0.2", "temperature": 0.0, "sigma": 0.2, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.093, "mean_nfe_per_8": 24.744, "mean_first_filled_step": 1.5031875, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.0065, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 5.268542996025644}
+hidden_T0_sigma_0.5: 512/2000 puzzles x 8; elapsed 1.3s
+hidden_T0_sigma_0.5: 1024/2000 puzzles x 8; elapsed 2.8s
+hidden_T0_sigma_0.5: 1536/2000 puzzles x 8; elapsed 4.2s
+hidden_T0_sigma_0.5: 2000/2000 puzzles x 8; elapsed 5.2s
+RESULT {"configuration": "hidden_T0_sigma_0.5", "temperature": 0.0, "sigma": 0.5, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.0, "mean_nfe_per_8": 24.0, "mean_first_filled_step": 1.503, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.0225, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 5.2335168439894915}
+hidden_T0_sigma_1: 512/2000 puzzles x 8; elapsed 1.5s
+hidden_T0_sigma_1: 1024/2000 puzzles x 8; elapsed 2.8s
+hidden_T0_sigma_1: 1536/2000 puzzles x 8; elapsed 4.2s
+hidden_T0_sigma_1: 2000/2000 puzzles x 8; elapsed 5.4s
+RESULT {"configuration": "hidden_T0_sigma_1", "temperature": 0.0, "sigma": 1.0, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.061, "mean_nfe_per_8": 24.488, "mean_first_filled_step": 1.503125, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.054, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 5.404040568973869}
+hidden_T0_sigma_2: 512/2000 puzzles x 8; elapsed 1.4s
+hidden_T0_sigma_2: 1024/2000 puzzles x 8; elapsed 3.2s
+hidden_T0_sigma_2: 1536/2000 puzzles x 8; elapsed 5.4s
+hidden_T0_sigma_2: 2000/2000 puzzles x 8; elapsed 7.0s
+RESULT {"configuration": "hidden_T0_sigma_2", "temperature": 0.0, "sigma": 2.0, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.061, "mean_nfe_per_8": 24.488, "mean_first_filled_step": 1.5031875, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.116, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 7.048636481980793}
+hidden_T0_sigma_5: 512/2000 puzzles x 8; elapsed 1.9s
+hidden_T0_sigma_5: 1024/2000 puzzles x 8; elapsed 3.6s
+hidden_T0_sigma_5: 1536/2000 puzzles x 8; elapsed 4.9s
+hidden_T0_sigma_5: 2000/2000 puzzles x 8; elapsed 6.0s
+RESULT {"configuration": "hidden_T0_sigma_5", "temperature": 0.0, "sigma": 5.0, "n_puzzles": 2000, "samples_per_puzzle": 8, "avg_at_8": 0.55, "pass_at_8": 0.55, "mean_nfe": 3.125, "mean_nfe_per_8": 25.0, "mean_first_filled_step": 1.5033125, "first_step_filled_rate": 49.7, "unfilled_rate": 0.0, "legal_rate": 0.55, "mean_distinct_answers": 1.276, "mixed_reward_group_rate": 0.0, "elapsed_seconds": 6.033085915027186}

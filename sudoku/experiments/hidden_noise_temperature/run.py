@@ -120,6 +120,10 @@ def smoke(model, tokenizer, prompts, args):
         d = noisy.predict(batch)
         noisy.noise_generator.manual_seed(123)
         e = noisy.predict(batch)
+    zero = PerturbedRelayPredictor(**base_kwargs(model, tokenizer, args), confidence_temperature=0)
+    toy_logits = torch.tensor([[[3., 2., 1.], [3., 3., 1.], [1., 1., 1.]]], device=args.device)
+    torch.testing.assert_close(zero.compute_confidence(toy_logits),
+        torch.tensor([[1., 0.5, 1/3]], device=args.device))
     assert a["trajectory"] == b["trajectory"] == c["trajectory"], "Baseline regression"
     assert a["rollout_steps"] == b["actual_forward_calls"], "NFE mismatch"
     assert d["trajectory"] == e["trajectory"], "Noise seed is not reproducible"
@@ -127,7 +131,7 @@ def smoke(model, tokenizer, prompts, args):
     assert torch.equal(d["ids"][batch["fixed"]], x[batch["fixed"]]), "Clues changed"
     with autocast(args):
         _, h = model(x, torch.zeros(*x.shape, model.d_model, device=args.device))
-    return {"baseline_trajectory_matches_original": True,
+    return {"zero_temperature_limit_and_ties": True, "baseline_trajectory_matches_original": True,
             "deterministic_repeat_matches": True, "noise_seed_reproducible": True,
             "first_step_unaffected_by_hidden_noise": True, "clues_preserved": True,
             "first_step_hidden_rms": h.float().square().mean().sqrt().item(),
@@ -150,6 +154,7 @@ def summarize(rows, label, temperature, sigma, args, seconds):
         mean_nfe=sum(r["nfe"] for r in rows)/len(rows),
         mean_nfe_per_8=sum(r["nfe"] for r in rows)/args.n,
         mean_first_filled_step=sum(max(0,r["first_filled_step"]) for r in rows if r["first_filled_step"] >= 0)/max(1,sum(r["first_filled_step"] >= 0 for r in rows)),
+        first_step_filled_rate=100*sum(r["first_step_remaining_masks"] == 0 for r in rows)/len(rows),
         unfilled_rate=100*sum(r["first_filled_step"] < 0 for r in rows)/len(rows),
         legal_rate=100*sum(r["legal"] and r["clues_preserved"] for r in rows)/len(rows),
         mean_distinct_answers=sum(len({tuple(r["prediction_ids"]) for r in group}) for group in by_puzzle.values())/args.n,
@@ -185,13 +190,14 @@ def main():
     ap.add_argument("--threshold", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=20260928)
     ap.add_argument("--temperatures", type=float, nargs="*", default=[0.5,0.75,1.25,1.5,2.0])
+    ap.add_argument("--noise-temperature", type=float, default=1.0, help="Fixed confidence temperature for the hidden-noise sweep; zero uses the exact T->0+ limit")
     ap.add_argument("--sigmas", type=float, nargs="*", default=[0.05,0.1,0.2,0.5,1.0])
     ap.add_argument("--smoke-only", action="store_true")
     args = ap.parse_args()
     if args.batch_size < 1 or args.max_steps < 1 or args.threshold < 0:
         ap.error("Invalid batch size, step limit or threshold")
-    if any(not math.isfinite(t) or t <= 0 for t in args.temperatures) or any(not math.isfinite(s) or s < 0 for s in args.sigmas):
-        ap.error("Temperatures must be positive; sigmas must be nonnegative")
+    if any(not math.isfinite(t) or t < 0 for t in [*args.temperatures, args.noise_temperature]) or any(not math.isfinite(s) or s < 0 for s in args.sigmas):
+        ap.error("Temperatures and sigmas must be nonnegative and finite")
     args.output.mkdir(parents=True, exist_ok=True)
     if (args.output / "manifest.json").exists():
         raise FileExistsError("Use a new output directory to avoid mixing experiments")
@@ -201,12 +207,18 @@ def main():
     prompts, targets, identities, data_meta = prepare_data(args.data, args.start, args.n, tokenizer)
     configurations = [("baseline", 1., 0.)]
     configurations += [(f"temperature_{t:g}", t, 0.) for t in dict.fromkeys(args.temperatures) if t != 1]
-    configurations += [(f"hidden_sigma_{s:g}", 1., s) for s in dict.fromkeys(args.sigmas) if s != 0]
+    for sigma in dict.fromkeys(args.sigmas):
+        if args.noise_temperature == 1.0:
+            if sigma != 0:
+                configurations.append((f"hidden_sigma_{sigma:g}", 1., sigma))
+        else:
+            configurations.append((f"hidden_T{args.noise_temperature:g}_sigma_{sigma:g}", args.noise_temperature, sigma))
     manifest = {"arguments": {k:str(v) if isinstance(v,Path) else v for k,v in vars(args).items()},
         "checkpoint_sha256": sha256(args.checkpoint), "model": model_meta, "data": data_meta,
         "configurations": configurations, "torch_version": torch.__version__,
         "gpu": torch.cuda.get_device_name(args.device) if str(args.device).startswith("cuda") else None,
         "source_hashes": {str(p.relative_to(ROOT)): sha256(p) for p in [Path(__file__),ROOT / "sudoku/relay/inference_perturbation.py",ROOT / "sudoku/relay/predictor.py",ROOT / "sudoku/relay/model.py"]},
+        "zero_temperature_definition": "Exact softmax T->0+ limit: confidence is reciprocal of the number of tied maximum logits; token top-1 is unchanged",
         "nfe_definition": "Actual model forwards per batch row, including forwards on finished rows and the original unconditional final forward. Eight actual runs per puzzle, without caching deterministic repeats.",
         "noise_seed_definition": "seed + sample_id*1000003 + batch_start; same streams across sigma values; changing batching changes streams",
         "selection": "Original cumulative uncertainty < 0.15 with highest-confidence fallback; top-1 over full vocabulary; no digit-only masking", "status":"running"}
@@ -249,7 +261,8 @@ def main():
                             noise_seed=noise_seed, batch_start=start, batch_row=j,
                             prediction_ids=cpu_ids[j], exact_match=exact[j], legal=legal[j],
                             clues_preserved=clues[j], nfe=result["actual_forward_calls"],
-                            first_filled_step=result["first_filled_step"][j])
+                            first_filled_step=result["first_filled_step"][j],
+                            first_step_remaining_masks=result["first_step_remaining_masks"][j])
                         f.write(json.dumps(row)+"\n"); rows.append(row)
                 f.flush()
                 print(f"{label}: {end}/{args.n} puzzles x {args.samples}; elapsed {time.monotonic()-started:.1f}s",flush=True)

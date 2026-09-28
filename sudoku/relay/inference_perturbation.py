@@ -10,8 +10,8 @@ class PerturbedRelayPredictor(ConfidenceBasedPredictor):
     def __init__(self, *, confidence_temperature=1.0, hidden_sigma=0.0,
                  noise_generator=None, **kwargs):
         super().__init__(**kwargs)
-        if not math.isfinite(confidence_temperature) or confidence_temperature <= 0:
-            raise ValueError("confidence_temperature must be positive and finite")
+        if not math.isfinite(confidence_temperature) or confidence_temperature < 0:
+            raise ValueError("confidence_temperature must be nonnegative and finite")
         if not math.isfinite(hidden_sigma) or hidden_sigma < 0:
             raise ValueError("hidden_sigma must be nonnegative and finite")
         if not self.with_relay or self.confidence != "top_prob":
@@ -24,6 +24,10 @@ class PerturbedRelayPredictor(ConfidenceBasedPredictor):
         # Preserve the original numerical path exactly for T=1.
         if self.confidence_temperature == 1.0:
             return super().compute_confidence(logits)
+        if self.confidence_temperature == 0.0:
+            # Exact T -> 0+ limit: uniform mass on tied maxima, zero elsewhere.
+            ties = (logits == logits.amax(dim=-1, keepdim=True)).sum(dim=-1)
+            return ties.to(logits.dtype).reciprocal()
         return super().compute_confidence(logits / self.confidence_temperature)
 
     def _record_relay_rollout_step_diagnostics(self, *args, **kwargs):
@@ -33,6 +37,10 @@ class PerturbedRelayPredictor(ConfidenceBasedPredictor):
     def predict_single_step(self, step_results, final_step=False):
         result = super().predict_single_step(step_results, final_step=final_step)
         self.forward_calls += 1
+        if self.forward_calls == 1:
+            self.first_step_remaining_masks = (
+                (result["x"] == self.tokenizer.mask_token_id) & ~result["fixed"]
+            ).sum(-1)
         filled = ~((result["x"] == self.tokenizer.mask_token_id) & ~result["fixed"]).any(-1)
         self.first_filled = torch.where(
             (self.first_filled < 0) & filled,
@@ -59,6 +67,7 @@ class PerturbedRelayPredictor(ConfidenceBasedPredictor):
                              & ~batch["fixed"]).any(-1)
         self.first_filled[initially_filled] = 0
         result = super().predict(batch, **kwargs)
+        result["first_step_remaining_masks"] = self.first_step_remaining_masks.cpu().tolist()
         result["actual_forward_calls"] = self.forward_calls
         result["first_filled_step"] = self.first_filled.cpu().tolist()
         return result

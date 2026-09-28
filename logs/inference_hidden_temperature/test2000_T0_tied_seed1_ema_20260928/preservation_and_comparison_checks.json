@@ -1,0 +1,7 @@
+{
+  "old_result_files_unchanged": 23,
+  "original_baseline_matches_all_16000_rollouts": true,
+  "checkpoint_and_dataset_hashes_match": true,
+  "T0_first_step_fraction_of_initial_blanks_filled": 0.9870503984492784,
+  "T0_mean_remaining_masks_after_first_step": 0.7215
+}

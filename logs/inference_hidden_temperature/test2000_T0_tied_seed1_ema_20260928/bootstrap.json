@@ -1,0 +1,286 @@
+{
+  "method": "Paired percentile bootstrap resampling puzzles with all eight outcomes kept together; conditional on this checkpoint and observed rollouts; pointwise intervals, no multiple-comparison correction.",
+  "seed": 20260928,
+  "replicates": 2000,
+  "results": [
+    {
+      "configuration": "baseline",
+      "avg_at_8": {
+        "estimate": 67.0,
+        "ci95": [
+          64.95,
+          69.05
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 67.0,
+        "ci95": [
+          64.95,
+          69.05
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_0",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_0.05",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_0.1",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_0.2",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_0.5",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_1",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_2",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T0_sigma_5",
+      "avg_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 0.5499999999999999,
+        "ci95": [
+          0.25,
+          0.8999999999999999
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -66.45,
+        "ci95": [
+          -68.5,
+          -64.44875
+        ]
+      }
+    }
+  ]
+}
