@@ -1,0 +1,14 @@
+{
+  "same_checkpoint": true,
+  "same_original_2000_puzzles": true,
+  "controls": {
+    "baseline": {
+      "matches_previous_predictions_and_nfe": true,
+      "rollouts_checked": 16000
+    },
+    "hidden_T2_sigma_0": {
+      "matches_previous_predictions_and_nfe": true,
+      "rollouts_checked": 16000
+    }
+  }
+}

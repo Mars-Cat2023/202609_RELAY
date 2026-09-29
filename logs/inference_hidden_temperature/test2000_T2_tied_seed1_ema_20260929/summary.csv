@@ -1,0 +1,6 @@
+configuration,temperature,sigma,n_puzzles,samples_per_puzzle,avg_at_8,pass_at_8,mean_nfe,mean_nfe_per_8,mean_first_filled_step,first_step_filled_rate,unfilled_rate,legal_rate,mean_distinct_answers,mixed_reward_group_rate,elapsed_seconds
+baseline,1.0,0.0,2000,8,67.0,67.0,22.512,180.096,6.3335,0.05,0.0,67.0,1.0,0.0,31.996847677975893
+hidden_T2_sigma_0,2.0,0.0,2000,8,82.55,82.55,44.696,357.568,9.423,0.0,0.0,82.55,1.0,0.0,31.688931293901987
+hidden_T2_sigma_0.5,2.0,0.5,2000,8,82.2875,84.7,47.185,377.48,9.5401875,0.0,0.0,82.2875,2.0805,5.65,33.7156843689736
+hidden_T2_sigma_1,2.0,1.0,2000,8,82.125,85.95,46.769,374.152,9.5796875,0.0,0.0,82.125,2.1645,8.95,68.20056408795062
+hidden_T2_sigma_2,2.0,2.0,2000,8,81.8625,87.45,47.107,376.856,9.6950625,0.0,0.0,81.8625,2.242,14.2,38.650006482959725

@@ -10,6 +10,7 @@ import numpy as np
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--reference", default="baseline", help="Deterministic configuration used for paired differences")
     parser.add_argument("--bootstrap-replicates", type=int, default=2000)
     args = parser.parse_args()
     out = args.output
@@ -27,7 +28,17 @@ def main():
     rng = np.random.default_rng(20260928)
     indices = rng.integers(0,n,size=(args.bootstrap_replicates,n),dtype=np.int32)
     intervals = []
-    baseline = None
+    reference = next((s for s in summaries if s["configuration"] == args.reference), None)
+    if reference is None or reference["sigma"] != 0:
+        raise ValueError("Reference must name an evaluated deterministic sigma=0 configuration")
+    reference_outcomes = np.full((n,samples), np.nan)
+    with (out / (args.reference+".jsonl")).open() as f:
+        for line in f:
+            r = json.loads(line)
+            reference_outcomes[r["puzzle_id"]-start,r["sample_id"]] = r["exact_match"]
+    if not np.isfinite(reference_outcomes).all() or not (reference_outcomes == reference_outcomes[:, :1]).all():
+        raise ValueError("Reference sample groups are incomplete or nondeterministic")
+    baseline = reference_outcomes.mean(axis=1)
     for summary in summaries:
         success = np.zeros((n,samples),dtype=np.float64)
         nfe = np.zeros((n,samples),dtype=np.int32)
@@ -50,8 +61,6 @@ def main():
         assert np.isclose(100*average.mean(),summary["avg_at_8"])
         assert np.isclose(100*passed.mean(),summary["pass_at_8"])
         assert np.isclose(nfe.mean(),summary["mean_nfe"])
-        if baseline is None:
-            baseline = average
         record = {"configuration": summary["configuration"]}
         for name,values in [("avg_at_8",average),("pass_at_8",passed),
                             ("avg_delta_pp",average-baseline),("pass_delta_pp",passed-baseline)]:
@@ -60,7 +69,7 @@ def main():
         intervals.append(record)
     (out / "bootstrap.json").write_text(json.dumps({
         "method":"Paired percentile bootstrap resampling puzzles with all eight outcomes kept together; conditional on this checkpoint and observed rollouts; pointwise intervals, no multiple-comparison correction.",
-        "seed":20260928,"replicates":args.bootstrap_replicates,"results":intervals},indent=2)+"\n")
+        "seed":20260928,"reference":args.reference,"replicates":args.bootstrap_replicates,"results":intervals},indent=2)+"\n")
     args_saved = manifest["arguments"]
     lines = ["# RELAY: confidence temperature versus hidden Gaussian noise", "",
         "## Protocol", "",
@@ -71,7 +80,7 @@ def main():
         "- T=0, when requested, means the exact softmax T->0+ limit, with uniform probability on tied maxima.",
         "## Results", "", (out / "summary.md").read_text().strip(), "",
         "NFE counts actual forwards per row, including work on already finished rows and the unconditional final forward. It depends on batch composition. `summary.csv` also reports first-filled steps. NFE / 8 counts the total budget across eight attempts.", "",
-        "## Differences from baseline", "",
+        f"## Differences from reference: {args.reference}", "",
         "Pointwise 95% paired puzzle-bootstrap intervals (percentage points):", "",
         "| Configuration | avg@8 change [95% CI] | pass@8 change [95% CI] |", "|---|---:|---:|"]
     for r in intervals:
@@ -95,7 +104,7 @@ def main():
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         fig,axes = plt.subplots(1,2,figsize=(11,4),constrained_layout=True)
-        baseline_s = summaries[0]
+        baseline_s = reference
         noise_temperature = manifest["arguments"].get("noise_temperature", 1.0)
         for ax,field,title in zip(axes,["temperature","sigma"],["No hidden noise",f"Hidden Gaussian noise (T={noise_temperature:g})"]):
             group = [s for s in summaries if (s["sigma"] == 0 if field == "temperature" else s["temperature"] == noise_temperature)]
@@ -103,7 +112,7 @@ def main():
             x = [s[field] for s in group]
             ax.plot(x,[s["avg_at_8"] for s in group],"o-",label="avg@8")
             ax.plot(x,[s["pass_at_8"] for s in group],"s--",label="pass@8")
-            ax.axhline(baseline_s["avg_at_8"],color="gray",linewidth=1,alpha=.7,label="Baseline")
+            ax.axhline(baseline_s["avg_at_8"],color="gray",linewidth=1,alpha=.7,label=f"Reference: T={reference['temperature']:g}, sigma=0")
             ax.set(xlabel="Temperature T" if field == "temperature" else "Hidden noise sigma",ylabel="Exact-match success (%)",title=title,ylim=(0,100))
             if field == "sigma":
                 ax.set_xscale("symlog",linthresh=0.05)

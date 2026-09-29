@@ -101,3 +101,23 @@ At T=0, uniquely confident masked positions have zero uncertainty cost and can a
 This also reruns the original T=1, sigma=0 baseline as a regression control. The T=0, sigma=0 result is a separate control within the new group. Eight attempts are actually executed for each of the nine configurations. All other checkpoint, dataset, seed, precision, batching and decoding settings match the preceding experiment.
 
 Original results remain in `logs/inference_hidden_temperature/test2000_tied_seed1_ema_20260928`. The previous source versions and a checksum inventory of all original result files were preserved under `logs/inference_hidden_temperature/archive_before_T0_20260928` before adding T=0 support. Plot generation in `analyze.py` requires matplotlib; the numerical audit/report can run without it.
+
+## T=2 with hidden noise on the original 2000 puzzles
+
+The requested follow-up reuses indices 0–1999 for direct paired comparison. These are exploratory tuning results on the same cohort, not an independent development or holdout evaluation. The same checkpoint, EMA weights, precision, batch layout, seed scheme, threshold and top-1 token selection are retained.
+
+```bash
+/data/qilong/miniconda3/envs/relay-sudoku/bin/python \
+  sudoku/experiments/hidden_noise_temperature/run.py \
+  --checkpoint logs/sudoku_extreme_relay_bptt_steps2_300k_tied_seed1/checkpoints/40-300000.ckpt \
+  --output logs/inference_hidden_temperature/test2000_T2_tied_seed1_ema_20260929 \
+  --start 0 --n 2000 --batch-size 512 --device cuda:7 \
+  --temperatures --noise-temperature 2 --sigmas 0 0.5 1 2
+
+/data/qilong/miniconda3/envs/relay-sudoku/bin/python \
+  sudoku/experiments/hidden_noise_temperature/analyze.py \
+  logs/inference_hidden_temperature/test2000_T2_tied_seed1_ema_20260929 \
+  --reference hidden_T2_sigma_0
+```
+
+The runner also evaluates the original T=1, sigma=0 baseline as a control. The paired-bootstrap reference for this follow-up is explicitly T=2, sigma=0, so differences isolate adding hidden noise at fixed confidence temperature. `mixed_reward_group_rate` is the percentage of puzzles with both successful and failed attempts among their eight samples.

@@ -1,0 +1,163 @@
+{
+  "method": "Paired percentile bootstrap resampling puzzles with all eight outcomes kept together; conditional on this checkpoint and observed rollouts; pointwise intervals, no multiple-comparison correction.",
+  "seed": 20260928,
+  "reference": "hidden_T2_sigma_0",
+  "replicates": 2000,
+  "results": [
+    {
+      "configuration": "baseline",
+      "avg_at_8": {
+        "estimate": 67.0,
+        "ci95": [
+          64.95,
+          69.05
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 67.0,
+        "ci95": [
+          64.95,
+          69.05
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -15.55,
+        "ci95": [
+          -17.4,
+          -13.65
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": -15.55,
+        "ci95": [
+          -17.4,
+          -13.65
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T2_sigma_0",
+      "avg_at_8": {
+        "estimate": 82.55,
+        "ci95": [
+          80.85,
+          84.2
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 82.55,
+        "ci95": [
+          80.85,
+          84.2
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T2_sigma_0.5",
+      "avg_at_8": {
+        "estimate": 82.28750000000001,
+        "ci95": [
+          80.64359375,
+          83.8625
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 84.7,
+        "ci95": [
+          83.15,
+          86.25
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.2625,
+        "ci95": [
+          -0.61875,
+          0.09375
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 2.15,
+        "ci95": [
+          1.54875,
+          2.8000000000000003
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T2_sigma_1",
+      "avg_at_8": {
+        "estimate": 82.125,
+        "ci95": [
+          80.48109375,
+          83.68124999999999
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 85.95,
+        "ci95": [
+          84.39999999999999,
+          87.5
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.42500000000000004,
+        "ci95": [
+          -0.9062499999999999,
+          0.056249999999999994
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 3.4000000000000004,
+        "ci95": [
+          2.6,
+          4.25
+        ]
+      }
+    },
+    {
+      "configuration": "hidden_T2_sigma_2",
+      "avg_at_8": {
+        "estimate": 81.86250000000001,
+        "ci95": [
+          80.24953125,
+          83.39390625
+        ]
+      },
+      "pass_at_8": {
+        "estimate": 87.45,
+        "ci95": [
+          85.99875,
+          88.9
+        ]
+      },
+      "avg_delta_pp": {
+        "estimate": -0.6875,
+        "ci95": [
+          -1.35625,
+          -0.043593750000000854
+        ]
+      },
+      "pass_delta_pp": {
+        "estimate": 4.9,
+        "ci95": [
+          3.9,
+          5.8500000000000005
+        ]
+      }
+    }
+  ]
+}
