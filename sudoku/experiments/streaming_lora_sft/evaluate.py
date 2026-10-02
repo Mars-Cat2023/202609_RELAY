@@ -58,6 +58,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--adapter", type=Path, required=True)
+    parser.add_argument("--adapter-method", default="streaming_lora_sft")
+    parser.add_argument("--expected-training-hidden-noise-sigma", type=float)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--weights", choices=["ema", "raw"], default="ema")
     parser.add_argument(
@@ -87,6 +89,16 @@ def main() -> None:
         parser.error("sigmas must be nonnegative")
     if args.dev_size < 1:
         parser.error("dev-size must be positive")
+    if not args.adapter_method or any(
+        character not in "abcdefghijklmnopqrstuvwxyz0123456789_"
+        for character in args.adapter_method
+    ):
+        parser.error("adapter-method must contain only lowercase letters, digits, and underscores")
+    if (
+        args.expected_training_hidden_noise_sigma is not None
+        and args.expected_training_hidden_noise_sigma < 0
+    ):
+        parser.error("expected-training-hidden-noise-sigma must be nonnegative")
 
     args.output.mkdir(parents=True, exist_ok=True)
     evaluation_manifest = {
@@ -108,6 +120,12 @@ def main() -> None:
         "lora_rank": args.lora_rank,
         "lora_alpha": args.lora_alpha,
     }
+    if args.adapter_method != "streaming_lora_sft":
+        evaluation_manifest["adapter_method"] = args.adapter_method
+    if args.expected_training_hidden_noise_sigma is not None:
+        evaluation_manifest["expected_training_hidden_noise_sigma"] = (
+            args.expected_training_hidden_noise_sigma
+        )
     evaluation_manifest_path = args.output / "evaluation_manifest.json"
     if evaluation_manifest_path.exists():
         previous_manifest = json.loads(evaluation_manifest_path.read_text())
@@ -129,6 +147,13 @@ def main() -> None:
         raise ValueError("Adapter rank does not match evaluation rank")
     if float(adapter_args.get("lora_alpha", args.lora_alpha)) != args.lora_alpha:
         raise ValueError("Adapter alpha does not match evaluation alpha")
+    if args.expected_training_hidden_noise_sigma is not None:
+        actual_training_sigma = float(adapter_args.get("hidden_noise_sigma", 0.0))
+        if actual_training_sigma != args.expected_training_hidden_noise_sigma:
+            raise ValueError(
+                f"Adapter training hidden-noise sigma {actual_training_sigma} does not "
+                f"match expected value {args.expected_training_hidden_noise_sigma}"
+            )
     frozen_hash = tensor_hash(
         (name, parameter) for name, parameter in model.named_parameters()
         if not parameter.requires_grad
@@ -147,7 +172,7 @@ def main() -> None:
     for sigma in args.sigmas:
         for eval_seed in args.eval_seeds:
             # The two methods use the same seed and decoding configuration.
-            for method, enabled in (("pretrained", False), ("streaming_lora_sft", True)):
+            for method, enabled in (("pretrained", False), (args.adapter_method, True)):
                 result_dir = args.output / f"{method}_sigma{sigma:g}_seed{eval_seed}"
                 result_path = result_dir / "evaluation.json"
                 if result_path.exists():
@@ -181,7 +206,7 @@ def main() -> None:
         ]
         sft_rows = [
             row for row in all_rows
-            if row["method"] == "streaming_lora_sft" and float(row["sigma"]) == sigma
+            if row["method"] == args.adapter_method and float(row["sigma"]) == sigma
         ]
         baseline = aggregate(baseline_rows)
         sft = aggregate(sft_rows)
@@ -200,8 +225,8 @@ def main() -> None:
             }
         summary["configurations"][sigma_key] = {
             "pretrained": baseline,
-            "streaming_lora_sft": sft,
-            "paired_delta_sft_minus_pretrained": paired_delta,
+            args.adapter_method: sft,
+            f"paired_delta_{args.adapter_method}_minus_pretrained": paired_delta,
         }
 
     summary_path = args.output / "summary.json"
@@ -209,11 +234,12 @@ def main() -> None:
     print(f"Wrote {summary_path}")
     for sigma_key, values in summary["configurations"].items():
         print(f"\n{sigma_key}")
-        print(f"{'Metric':<30} {'Pretrained':>12} {'Streaming SFT':>14} {'Delta':>12}")
+        adapter_label = args.adapter_method.replace("_", " ")
+        print(f"{'Metric':<30} {'Pretrained':>12} {adapter_label:>30} {'Delta':>12}")
         for metric in METRICS:
             base = values["pretrained"][metric]["mean"]
-            sft = values["streaming_lora_sft"][metric]["mean"]
-            delta = values["paired_delta_sft_minus_pretrained"][metric]["mean"]
+            sft = values[args.adapter_method][metric]["mean"]
+            delta = values[f"paired_delta_{args.adapter_method}_minus_pretrained"][metric]["mean"]
             print(f"{metric:<30} {base:>12.4f} {sft:>14.4f} {delta:>+12.4f}")
 
 

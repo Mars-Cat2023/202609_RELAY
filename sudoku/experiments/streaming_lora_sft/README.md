@@ -36,3 +36,13 @@ bash sudoku/experiments/streaming_lora_sft/scripts/evaluate.sh
 The evaluator compares the pretrained checkpoint and the trained adapter on the same first 2,000 test puzzles with seeds 1, 2, and 3. It runs hidden-state \(\sigma=0\) and \(\sigma=1\), using \(T_{conf}=2\), full-vocabulary token temperature \(\tau_{tok}=0.3\), and group size 8.
 
 At \(\sigma=0\), the relayed hidden state is deterministic. Token decoding remains categorical because \(\tau_{tok}=0.3\); the whole rollout is therefore not fully deterministic.
+
+## Core Implementation Files
+
+The one-step Streaming LoRA-SFT implementation is organized across the following files:
+
+- [`train.py`](./train.py): Implements persistent `StreamingBatch` states, one-step supervised cross-entropy, confidence-based teacher forcing, detached hidden-state transitions, and puzzle replacement after trajectory completion.
+- [`lora.py`](../../relay/lora.py): Implements LoRA injection, pretrained-parameter freezing, adapter validation, and adapter checkpoint serialization.
+- [`streaming_batch.py`](../../relay/streaming_batch.py): Stores and updates the persistent token and hidden states \((x_k,h_k)\) for each streaming batch slot.
+- [`gaussian_grpo.py`](../../relay/gaussian_grpo.py): Provides the shared `select_positions()` implementation for confidence-based position selection.
+- [`gaussian_hidden_grpo/train.py`](../gaussian_hidden_grpo/train.py): Provides shared utilities for pretrained checkpoint loading, dataset collation, hashing, and matched evaluation.

@@ -132,8 +132,14 @@ def one_step_supervised_ce(
     confidence_temperature: float,
     threshold: float,
     precision: str,
+    hidden_noise_sigma: float = 0.0,
+    noise_generator: torch.Generator | None = None,
 ) -> tuple[torch.Tensor, dict]:
-    """One forward, CE on the current state, then a detached teacher-forced transition."""
+    """One forward, CE, then a detached teacher-forced Gaussian transition."""
+    if hidden_noise_sigma < 0:
+        raise ValueError("hidden_noise_sigma must be nonnegative")
+    if hidden_noise_sigma > 0 and noise_generator is None:
+        raise ValueError("Gaussian hidden training requires a noise generator")
     assert streaming.storage is not None and streaming.ready_to_evict is not None
     ready_before = streaming.ready_to_evict.clone()
     x = streaming.storage["input_ids"].clone()
@@ -162,8 +168,22 @@ def one_step_supervised_ce(
         temperature=confidence_temperature, threshold=threshold, active=active,
     )
     x_next = torch.where(selected, targets, x)
-    # Numerical relay state continues; the graph is cut at every optimizer boundary.
-    h_next = torch.where(active[:, None, None], mean.detach().float(), h)
+    # The numerical relay state continues, but its graph is cut at every optimizer
+    # boundary. Gaussian corruption is sampled after the current-state CE and is
+    # therefore consumed as the next optimizer update's hidden-state input.
+    detached_mean = mean.detach().float()
+    if hidden_noise_sigma > 0:
+        hidden_noise = hidden_noise_sigma * torch.randn(
+            detached_mean.shape,
+            device=detached_mean.device,
+            dtype=torch.float32,
+            generator=noise_generator,
+        )
+        relayed_hidden = detached_mean + hidden_noise
+    else:
+        hidden_noise = torch.zeros_like(detached_mean)
+        relayed_hidden = detached_mean
+    h_next = torch.where(active[:, None, None], relayed_hidden, h)
     streaming.storage["input_ids"] = x_next.detach()
     streaming.storage["h_s"] = h_next.detach()
     streaming.update_after_unmask(selected, targets, mask_token_id)
@@ -176,6 +196,10 @@ def one_step_supervised_ce(
         "mean_masks_before": float(masked.sum(-1).float().mean().item()),
         "mean_masks_after": float(
             (((x_next == mask_token_id) & ~fixed).sum(-1).float().mean()).item()
+        ),
+        "hidden_noise_sigma": float(hidden_noise_sigma),
+        "hidden_noise_rms": float(
+            hidden_noise[active].square().mean().sqrt().item() if active.any() else 0.0
         ),
     }
 
@@ -216,6 +240,7 @@ def save_training_checkpoint(
     started: int,
     args,
     frozen_base_hash: str,
+    noise_generator: torch.Generator,
 ) -> None:
     torch.save(
         {
@@ -229,6 +254,7 @@ def save_training_checkpoint(
             "cursor": cursor.state_dict(),
             "arguments": vars(args),
             "frozen_base_sha256": frozen_base_hash,
+            "hidden_noise_generator_state": noise_generator.get_state().cpu(),
         },
         path,
     )
@@ -254,6 +280,7 @@ def main() -> None:
     parser.add_argument("--max-optimizer-steps", type=int, default=100000)
     parser.add_argument("--confidence-temperature", type=float, default=2.0)
     parser.add_argument("--threshold", type=float, default=0.15)
+    parser.add_argument("--hidden-noise-sigma", type=float, default=0.0)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--warmup-steps", type=int, default=50)
     parser.add_argument("--weight-decay", type=float, default=0.0)
@@ -274,6 +301,8 @@ def main() -> None:
         parser.error("This baseline is locked to LoRA rank=32 and alpha=64")
     if args.confidence_temperature < 0 or args.learning_rate <= 0:
         parser.error("temperatures must be nonnegative and learning-rate positive")
+    if args.hidden_noise_sigma < 0:
+        parser.error("hidden-noise-sigma must be nonnegative")
     if args.resume is None and args.output.exists():
         parser.error(f"Output already exists: {args.output}")
     args.output.mkdir(parents=True, exist_ok=args.resume is not None)
@@ -282,6 +311,8 @@ def main() -> None:
     torch.manual_seed(args.seed)
     if device.type == "cuda":
         torch.cuda.manual_seed_all(args.seed)
+    hidden_noise_seed = 1_000_000 + args.seed
+    noise_generator = torch.Generator(device=device).manual_seed(hidden_noise_seed)
     model, tokenizer, source_step, model_config = load_pretrained(
         args.checkpoint, args.weights, device
     )
@@ -320,6 +351,12 @@ def main() -> None:
 
     if args.resume is not None:
         resume = torch.load(args.resume, map_location="cpu", weights_only=False)
+        resume_sigma = float(resume.get("arguments", {}).get("hidden_noise_sigma", 0.0))
+        if resume_sigma != args.hidden_noise_sigma:
+            raise ValueError(
+                f"Resume hidden-noise sigma {resume_sigma} does not match "
+                f"requested sigma {args.hidden_noise_sigma}"
+            )
         if resume["frozen_base_sha256"] != frozen_hash:
             raise ValueError("Resume checkpoint has a different frozen base")
         model_state = model.state_dict()
@@ -330,6 +367,10 @@ def main() -> None:
         scheduler.load_state_dict(resume["scheduler"])
         streaming = load_streaming_state(resume["streaming"], device)
         cursor.load_state_dict(resume["cursor"])
+        if "hidden_noise_generator_state" in resume:
+            noise_generator.set_state(resume["hidden_noise_generator_state"])
+        elif args.hidden_noise_sigma > 0:
+            raise ValueError("Gaussian resume checkpoint has no hidden-noise RNG state")
         step = int(resume["step"])
         completed = int(resume["completed_trajectories"])
         started = int(resume["started_trajectories"])
@@ -337,8 +378,18 @@ def main() -> None:
     manifest = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "status": "running",
-        "method": "one-step streaming full-trajectory LoRA-SFT",
-        "state_transition": "teacher-forced x; h_next=stop_gradient(mu); one forward per optimizer update",
+        "method": (
+            "Gaussian one-step streaming full-trajectory LoRA-SFT"
+            if args.hidden_noise_sigma > 0
+            else "one-step streaming full-trajectory LoRA-SFT"
+        ),
+        "state_transition": (
+            "teacher-forced x; h_next=stop_gradient(mu + sigma * epsilon); "
+            "one forward per optimizer update"
+            if args.hidden_noise_sigma > 0
+            else "teacher-forced x; h_next=stop_gradient(mu); one forward per optimizer update"
+        ),
+        "hidden_noise_seed": hidden_noise_seed,
         "arguments": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
         "pretrained_checkpoint_sha256": sha256(args.checkpoint),
         "pretrained_global_step": source_step,
@@ -367,6 +418,8 @@ def main() -> None:
             model, streaming, mask_token_id=tokenizer.mask_token_id,
             confidence_temperature=args.confidence_temperature,
             threshold=args.threshold, precision=args.precision,
+            hidden_noise_sigma=args.hidden_noise_sigma,
+            noise_generator=noise_generator,
         )
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -405,6 +458,7 @@ def main() -> None:
                 checkpoint_path, model=model, optimizer=optimizer, scheduler=scheduler,
                 streaming=streaming, cursor=cursor, step=step, completed=completed,
                 started=started, args=args, frozen_base_hash=initial_frozen_hash,
+                noise_generator=noise_generator,
             )
             (args.output / "latest_checkpoint.txt").write_text(str(checkpoint_path) + "\n")
             while next_save <= completed:
@@ -415,6 +469,7 @@ def main() -> None:
         final_path, model=model, optimizer=optimizer, scheduler=scheduler,
         streaming=streaming, cursor=cursor, step=step, completed=completed,
         started=started, args=args, frozen_base_hash=initial_frozen_hash,
+        noise_generator=noise_generator,
     )
     manifest.update(
         status="complete",
