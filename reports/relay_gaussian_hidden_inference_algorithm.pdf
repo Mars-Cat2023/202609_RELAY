@@ -1,0 +1,460 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+4 0 obj
+<< /Length 3162 >>
+stream
+BT
+/F2 20 Tf
+58 780 Td
+(RELAY Inference Algorithm with Gaussian) Tj
+0 -27 Td
+(Hidden-State Noise) Tj
+ET
+BT
+/F1 9.5 Tf
+58 718 Td
+(Technical specification of the stochastic self-conditioning inference procedure) Tj
+ET
+BT
+/F2 14 Tf
+58 701 Td
+(1. State Initialization) Tj
+ET
+BT
+/F1 9.5 Tf
+58 672 Td
+(For a Sudoku of length L = 81, define the state at inference iteration k as) Tj
+ET
+BT
+/F3 8.7 Tf
+70 655 Td
+(s_k = \(x^\(k\), h^\(k\)\),) Tj
+ET
+BT
+/F3 8.7 Tf
+70 639 Td
+(x^\(k\) in V^81,    h^\(k\) in R^\(81 x 384\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 623 Td
+(At clue positions, x^\(0\) contains the given digit; at empty positions it contains [MASK].) Tj
+0 -14 Td
+(Initialize h^\(0\) = 0. Let c_i = 1 denote an immutable clue position.) Tj
+ET
+BT
+/F2 14 Tf
+58 592 Td
+(2. RELAY Forward Pass) Tj
+ET
+BT
+/F1 9.5 Tf
+58 563 Td
+(At iteration k, RELAY combines token embeddings with the relayed hidden state:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 546 Td
+(u^\(k\) = Embed_theta\(x^\(k\)\) + LN_relay\(h^\(k\)\).) Tj
+ET
+BT
+/F3 8.7 Tf
+70 530 Td
+(z^\(k\) = Transformer_theta\(u^\(k\)\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 514 Td
+(The same forward pass produces token logits and the Gaussian hidden-policy mean:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 497 Td
+(Lambda^\(k\) = LMHead_theta\(LN_out\(z^\(k\)\)\),) Tj
+ET
+BT
+/F3 8.7 Tf
+70 481 Td
+(mu^\(k\) = z^\(k\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 465 Td
+(Lambda^\(k\) defines token probabilities; mu^\(k\) defines the mean of the hidden Gaussian) Tj
+0 -14 Td
+(policy.) Tj
+ET
+BT
+/F2 14 Tf
+58 434 Td
+(3. Token Probabilities) Tj
+ET
+BT
+/F1 9.5 Tf
+58 405 Td
+(Full-vocabulary token probabilities use token temperature tau_tok > 0:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 388 Td
+(P_[i,v]^\(k\) = exp\(Lambda_[i,v]^\(k\) / tau_tok\)) Tj
+ET
+BT
+/F3 8.7 Tf
+70 372 Td
+(              / sum_u exp\(Lambda_[i,u]^\(k\) / tau_tok\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 356 Td
+(For every selected position i, sample) Tj
+ET
+BT
+/F3 8.7 Tf
+70 339 Td
+(xhat_i^\(k\) ~ Categorical\(P_[i,:]^\(k\)\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 323 Td
+(An equivalent Gumbel-Max implementation is) Tj
+ET
+BT
+/F3 8.7 Tf
+70 306 Td
+(xhat_i^\(k\) = argmax_v [Lambda_[i,v]^\(k\) / tau_tok + g_[i,v]],) Tj
+ET
+BT
+/F3 8.7 Tf
+70 290 Td
+(g_[i,v] ~ Gumbel\(0, 1\).) Tj
+ET
+BT
+/F2 14 Tf
+58 274 Td
+(4. Confidence-Based Position Selection) Tj
+ET
+BT
+/F1 9.5 Tf
+58 245 Td
+(The currently masked and mutable positions are) Tj
+ET
+BT
+/F3 8.7 Tf
+70 228 Td
+(M^\(k\) = {i : x_i^\(k\) = [MASK] and c_i = 0}.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 212 Td
+(Confidence uses a separate temperature T_conf:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 195 Td
+(P_conf_[i,v]^\(k\) = softmax\(Lambda_[i,:]^\(k\) / T_conf\)_v,) Tj
+ET
+BT
+/F3 8.7 Tf
+70 179 Td
+(a_i^\(k\) = max_v P_conf_[i,v]^\(k\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 163 Td
+(Sort the mutable masked positions by decreasing confidence:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 146 Td
+(a_pi1^\(k\) >= a_pi2^\(k\) >= ... >= a_pin^\(k\),    n = |M^\(k\)|.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 130 Td
+(Define cumulative uncertainty and the initial selected set:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 113 Td
+(C_j^\(k\) = sum_\(r=1\)^j \(1 - a_pir^\(k\)\),) Tj
+ET
+BT
+/F3 8.7 Tf
+70 97 Td
+(U_tilde^\(k\) = {pi_j : C_j^\(k\) < eta}.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 81 Td
+(The final selected set is) Tj
+ET
+BT
+/F1 8 Tf
+279.5 28 Td
+(Page 1 of 3) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Length 3368 >>
+stream
+BT
+/F3 8.7 Tf
+70 780 Td
+(U^\(k\) = U_tilde^\(k\),              if U_tilde^\(k\) is nonempty;) Tj
+ET
+BT
+/F3 8.7 Tf
+70 764 Td
+(       = {pi_1},                    if U_tilde^\(k\) is empty and M^\(k\) is nonempty;) Tj
+ET
+BT
+/F3 8.7 Tf
+70 748 Td
+(       = empty set,                 if M^\(k\) is empty.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 732 Td
+(The fallback guarantees that at least one position is selected while unresolved masks) Tj
+0 -14 Td
+(remain.) Tj
+ET
+BT
+/F2 14 Tf
+58 701 Td
+(5. Token-State Transition) Tj
+ET
+BT
+/F1 9.5 Tf
+58 672 Td
+(Only selected positions are updated:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 655 Td
+(x_i^\(k+1\) = xhat_i^\(k\),    if i is in U^\(k\);) Tj
+ET
+BT
+/F3 8.7 Tf
+70 639 Td
+(            = x_i^\(k\),       otherwise.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 623 Td
+(Clue positions are never modified. This is inference: sampled tokens are written into the) Tj
+0 -14 Td
+(next state, and no teacher forcing is used.) Tj
+ET
+BT
+/F2 14 Tf
+58 592 Td
+(6. Gaussian Hidden-State Transition) Tj
+ET
+BT
+/F1 9.5 Tf
+58 563 Td
+(The hidden policy is) Tj
+ET
+BT
+/F3 8.7 Tf
+70 546 Td
+(q_theta\(h^\(k+1\) | s_k\) = Normal\(h^\(k+1\); mu^\(k\), sigma^2 I\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 530 Td
+(Sample independent Gaussian noise and update the relayed hidden state:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 513 Td
+(epsilon^\(k\) ~ Normal\(0, I\),) Tj
+ET
+BT
+/F3 8.7 Tf
+70 497 Td
+(h^\(k+1\) = mu^\(k\) + sigma epsilon^\(k\)) Tj
+ET
+BT
+/F3 8.7 Tf
+70 481 Td
+(          = z^\(k\)  + sigma epsilon^\(k\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 465 Td
+(The sampled hidden state is fed into the next forward pass:) Tj
+ET
+BT
+/F3 8.7 Tf
+70 448 Td
+(u^\(k+1\) = Embed_theta\(x^\(k+1\)\)) Tj
+ET
+BT
+/F3 8.7 Tf
+70 432 Td
+(          + LN_relay\(z^\(k\) + sigma epsilon^\(k\)\).) Tj
+ET
+BT
+/F1 9.5 Tf
+58 416 Td
+(When sigma = 0, hidden relaying is deterministic. When sigma > 0, self-conditioning is) Tj
+0 -14 Td
+(stochastic.) Tj
+ET
+BT
+/F2 14 Tf
+58 385 Td
+(7. Complete State Transition) Tj
+ET
+BT
+/F1 9.5 Tf
+58 356 Td
+(One complete inference iteration is) Tj
+ET
+BT
+/F3 8.7 Tf
+70 339 Td
+(s_k = \(x^\(k\), h^\(k\)\);) Tj
+ET
+BT
+/F3 8.7 Tf
+70 323 Td
+(\(Lambda^\(k\), mu^\(k\)\) = f_theta\(x^\(k\), h^\(k\)\);) Tj
+ET
+BT
+/F3 8.7 Tf
+70 307 Td
+(U^\(k\) = ConfidenceSelect\(Lambda^\(k\), x^\(k\), c; T_conf, eta\);) Tj
+ET
+BT
+/F3 8.7 Tf
+70 291 Td
+(xhat_i^\(k\) ~ Categorical\(softmax\(Lambda_[i,:]^\(k\) / tau_tok\)\);) Tj
+ET
+BT
+/F3 8.7 Tf
+70 275 Td
+(x_i^\(k+1\) = xhat_i^\(k\) for i in U^\(k\), and x_i^\(k\) otherwise;) Tj
+ET
+BT
+/F3 8.7 Tf
+70 259 Td
+(h^\(k+1\) = mu^\(k\) + sigma epsilon^\(k\);) Tj
+ET
+BT
+/F3 8.7 Tf
+70 243 Td
+(s_\(k+1\) = \(x^\(k+1\), h^\(k+1\)\).) Tj
+ET
+BT
+/F2 14 Tf
+58 227 Td
+(8. Termination and Number of Forward Evaluations) Tj
+ET
+BT
+/F1 9.5 Tf
+58 198 Td
+(Inference terminates when no mutable masks remain, M^\(k+1\) is empty, or when the maximum) Tj
+0 -14 Td
+(rollout length K_max is reached. At the final allowed iteration, all remaining mutable mask) Tj
+0 -14 Td
+(positions are forced to be selected.) Tj
+ET
+BT
+/F3 8.7 Tf
+70 153 Td
+(NFE = number of executed inference iterations.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 137 Td
+(Each iteration requires one RELAY forward evaluation.) Tj
+ET
+BT
+/F2 14 Tf
+58 120 Td
+(9. Current Experimental Configuration) Tj
+ET
+BT
+/F3 8.7 Tf
+70 91 Td
+(T_conf = 2,    tau_tok = 0.3,    eta = 0.15.) Tj
+ET
+BT
+/F1 9.5 Tf
+58 75 Td
+(- sigma_eval = 0: deterministic hidden relaying.) Tj
+ET
+BT
+/F1 8 Tf
+279.5 28 Td
+(Page 2 of 3) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Length 125 >>
+stream
+BT
+/F1 9.5 Tf
+58 780 Td
+(- sigma_eval = 1: Gaussian hidden-state relaying.) Tj
+ET
+BT
+/F1 8 Tf
+279.5 28 Td
+(Page 3 of 3) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R >> >> /Contents 4 0 R >>
+endobj
+8 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R >> >> /Contents 5 0 R >>
+endobj
+9 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R >> >> /Contents 6 0 R >>
+endobj
+10 0 obj
+<< /Type /Pages /Count 3 /Kids [7 0 R 8 0 R 9 0 R] >>
+endobj
+11 0 obj
+<< /Type /Catalog /Pages 10 0 R >>
+endobj
+12 0 obj
+<< /Title (RELAY Inference Algorithm with Gaussian Hidden-State Noise) /Author (RELAY Project) /Subject (Gaussian stochastic self-conditioning inference) >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000000228 00000 n 
+0000003442 00000 n 
+0000006862 00000 n 
+0000007038 00000 n 
+0000007185 00000 n 
+0000007332 00000 n 
+0000007479 00000 n 
+0000007549 00000 n 
+0000007600 00000 n 
+trailer
+<< /Size 13 /Root 11 0 R /Info 12 0 R >>
+startxref
+7773
+%%EOF
